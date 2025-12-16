@@ -33,6 +33,35 @@ Lambda Security Group:
 - **Secrets Manager**: API calls use HTTPS
 - **CloudWatch Logs**: API calls use HTTPS
 
+### SFTP Host Key Verification
+
+**Current Implementation**: The Lambda function uses `paramiko.AutoAddPolicy()` which automatically accepts any SSH host key.
+
+**Security Trade-off**: This approach is vulnerable to man-in-the-middle (MITM) attacks but provides maximum compatibility with various SFTP servers.
+
+**Recommended Production Implementation**:
+
+For enhanced security, implement proper host key verification:
+
+```python
+# Option 1: Use RejectPolicy with pre-loaded known hosts
+ssh = paramiko.SSHClient()
+ssh.load_host_keys('/path/to/known_hosts')  # Store in Lambda layer or S3
+ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
+
+# Option 2: Store expected host key in Secrets Manager
+expected_host_key = "ssh-rsa AAAAB3NzaC1yc2EA..."  # From secrets
+server_key = paramiko.RSAKey(data=base64.b64decode(expected_host_key))
+ssh.get_host_keys().add(hostname, 'ssh-rsa', server_key)
+ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
+```
+
+**Implementation Steps**:
+1. Obtain the SFTP server's host key: `ssh-keyscan sftp.example.com`
+2. Store host key in Secrets Manager alongside credentials
+3. Update Lambda function to validate host key before connection
+4. Consider using a Lambda layer for known_hosts file
+
 ### Encryption at Rest
 - **S3 Bucket**: AES-256 server-side encryption (SSE-S3)
 - **Secrets Manager**: Encrypted with AWS KMS
