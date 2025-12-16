@@ -50,8 +50,8 @@ resource "aws_lambda_function" "file_transfer" {
 resource "aws_cloudwatch_event_rule" "file_transfer_schedule" {
   name                = "${var.project_name}-${var.environment}-file-transfer-schedule"
   description         = "Trigger file transfer Lambda function on schedule"
-  schedule_expression = "rate(1 hour)"
-  is_enabled          = false
+  schedule_expression = var.lambda_schedule_expression
+  is_enabled          = var.lambda_schedule_enabled
 
   tags = {
     Name = "${var.project_name}-${var.environment}-schedule-rule"

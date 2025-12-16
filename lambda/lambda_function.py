@@ -53,10 +53,18 @@ def create_sftp_client(credentials):
         
     Returns:
         paramiko.SFTPClient: Connected SFTP client
+        
+    Note:
+        This implementation uses AutoAddPolicy() which automatically accepts 
+        any host key. In production, consider implementing proper host key 
+        verification by storing known_hosts or using RejectPolicy with 
+        pre-configured host keys for enhanced security.
     """
     try:
         # Create SSH client
         ssh = paramiko.SSHClient()
+        # Note: AutoAddPolicy() is used for compatibility but is vulnerable to MITM attacks
+        # For production, consider: ssh.load_host_keys() or ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         
         # Prepare authentication
@@ -69,8 +77,26 @@ def create_sftp_client(credentials):
         private_key_str = credentials.get('private_key')
         
         if private_key_str:
-            # Use private key authentication
-            private_key = paramiko.RSAKey.from_private_key(BytesIO(private_key_str.encode()))
+            # Try to load private key (support multiple key types)
+            private_key = None
+            key_types = [
+                ('RSA', paramiko.RSAKey),
+                ('Ed25519', paramiko.Ed25519Key),
+                ('ECDSA', paramiko.ECDSAKey),
+                ('DSS', paramiko.DSSKey)
+            ]
+            
+            for key_name, key_class in key_types:
+                try:
+                    private_key = key_class.from_private_key(BytesIO(private_key_str.encode()))
+                    logger.info(f"Successfully loaded {key_name} private key")
+                    break
+                except Exception:
+                    continue
+            
+            if not private_key:
+                raise ValueError("Unable to load private key. Unsupported key format.")
+            
             ssh.connect(hostname=host, port=port, username=username, pkey=private_key, timeout=30)
         elif password:
             # Use password authentication

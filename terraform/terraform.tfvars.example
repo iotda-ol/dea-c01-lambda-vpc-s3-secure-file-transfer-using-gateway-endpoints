@@ -15,6 +15,10 @@ sftp_port = 22
 sftp_username = "sftp_user"
 sftp_remote_path = "/uploads"
 
+# Lambda Schedule Configuration
+lambda_schedule_expression = "rate(1 hour)"  # Options: rate(1 hour), cron(0 12 * * ? *), etc.
+lambda_schedule_enabled = false               # Set to true to enable scheduled execution
+
 # Tags
 tags = {
   Project     = "SecureFileTransfer"

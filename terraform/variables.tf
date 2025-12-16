@@ -59,6 +59,18 @@ variable "sftp_remote_path" {
   default     = "/uploads"
 }
 
+variable "lambda_schedule_expression" {
+  description = "Schedule expression for Lambda function execution (e.g., 'rate(1 hour)' or 'cron(0 12 * * ? *)')"
+  type        = string
+  default     = "rate(1 hour)"
+}
+
+variable "lambda_schedule_enabled" {
+  description = "Enable or disable the Lambda function schedule"
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   description = "Common tags for all resources"
   type        = map(string)
