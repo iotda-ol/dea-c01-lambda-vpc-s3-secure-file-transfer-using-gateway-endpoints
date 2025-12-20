@@ -1,0 +1,9 @@
+{
+  "remote_path": "/upload/sample.txt",
+  "s3_key": "transferred/sample.txt",
+  "mode": "single",
+  "metadata": {
+    "source": "sftp-server",
+    "transferred_at": "2024-01-01T00:00:00Z"
+  }
+}
