@@ -1,0 +1,29 @@
+# Example terraform.tfvars for Development Environment
+# Copy this file to terraform.tfvars and update with your values
+
+# AWS Configuration
+aws_region = "us-east-1"
+
+# VPC Configuration
+vpc_cidr             = "10.0.0.0/16"
+private_subnet_cidrs = ["10.0.1.0/24", "10.0.2.0/24"]
+availability_zones   = ["us-east-1a", "us-east-1b"]
+enable_flow_logs     = false
+
+# S3 Configuration
+# IMPORTANT: Bucket name must be globally unique
+s3_bucket_name = "my-secure-file-transfer-dev-bucket-12345"
+s3_prefix      = "uploads/"
+
+# SFTP Configuration
+sftp_host        = "sftp.example.com"
+sftp_port        = 22
+sftp_username    = "transfer_user"
+sftp_secret_name = "dev/sftp-credentials"
+sftp_secret_arn  = "arn:aws:secretsmanager:us-east-1:123456789012:secret:dev/sftp-credentials-AbCdEf"
+
+# Lambda Configuration
+lambda_source_path = "../../../lambda/lambda_function.zip"
+max_file_size_mb   = 100
+log_level          = "INFO"
+enable_xray        = false

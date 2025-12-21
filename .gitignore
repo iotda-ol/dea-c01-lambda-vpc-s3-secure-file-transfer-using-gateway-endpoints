@@ -33,6 +33,25 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+venv/
+ENV/
+env/
+
+# Lambda
+lambda_function.zip
+*.zip
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+tfplan
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
 
 # Virtual Environment
 venv/
@@ -63,6 +82,37 @@ build/
 *~
 .DS_Store
 
+# AWS
+.aws/
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+*.tfvars
+!terraform.tfvars.example
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Temporary
+tmp/
+temp/
+*.tmp
+
+# Test
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# Documentation
+.jekyll-cache/
+_site/
 # Lambda Package
 lambda-package.zip
 /tmp/lambda-package/
