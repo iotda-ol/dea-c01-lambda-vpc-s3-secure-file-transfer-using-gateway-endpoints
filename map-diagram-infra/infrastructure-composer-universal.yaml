@@ -1,0 +1,500 @@
+# Universal Infrastructure Composer
+# Multi-Cloud Infrastructure Mapping for Secure File Transfer Solution
+# Compatible with: AWS, GCP, Azure
+
+metadata:
+  project: Secure File Transfer using Serverless Functions and Object Storage
+  version: "1.0.0"
+  created: "2025-12-21"
+  description: |
+    Universal cloud infrastructure mapping for secure file transfer from legacy SFTP 
+    systems to cloud object storage using serverless functions in isolated networks.
+    This abstraction layer enables deployment across AWS, GCP, and Azure.
+
+# Abstract Component Definitions (Cloud-Agnostic)
+components:
+  
+  # 1. Networking Components
+  networking:
+    virtual_network:
+      type: isolated_network
+      purpose: Isolated network for secure compute resources
+      properties:
+        cidr: "10.0.0.0/16"
+        dns_enabled: true
+        ipv4_enabled: true
+      cloud_mappings:
+        aws: "AWS VPC"
+        gcp: "GCP VPC Network"
+        azure: "Azure Virtual Network (VNet)"
+    
+    private_subnets:
+      type: network_segments
+      count: 2
+      purpose: Private network segments for compute resources
+      properties:
+        cidr_ranges: ["10.0.1.0/24", "10.0.2.0/24"]
+        availability_zones: ["zone-a", "zone-b"]
+        internet_access: false
+      cloud_mappings:
+        aws: "AWS Private Subnets"
+        gcp: "GCP Subnets (Private Google Access enabled)"
+        azure: "Azure Subnets (with Service Endpoints)"
+    
+    route_table:
+      type: routing_table
+      purpose: Routing rules for network traffic
+      properties:
+        scope: private
+        routes:
+          - destination: "object_storage_endpoint"
+            type: "gateway"
+      cloud_mappings:
+        aws: "AWS Route Table"
+        gcp: "GCP Routes"
+        azure: "Azure Route Table"
+    
+    storage_gateway_endpoint:
+      type: private_service_endpoint
+      purpose: Private connectivity to object storage without internet
+      properties:
+        service: "object_storage"
+        endpoint_type: "gateway"
+        cost: "free"
+        data_transfer_cost: "none"
+      cloud_mappings:
+        aws: "AWS S3 VPC Gateway Endpoint"
+        gcp: "GCP Private Google Access for Cloud Storage"
+        azure: "Azure Storage Service Endpoint / Private Endpoint"
+    
+    security_groups:
+      type: network_firewall_rules
+      purpose: Network-level access control
+      rules:
+        egress_https:
+          direction: "outbound"
+          protocol: "tcp"
+          port: 443
+          destination: "object_storage"
+          description: "HTTPS to object storage"
+        egress_sftp:
+          direction: "outbound"
+          protocol: "tcp"
+          port: 22
+          destination: "0.0.0.0/0"
+          description: "SSH/SFTP to legacy system"
+      cloud_mappings:
+        aws: "AWS Security Groups"
+        gcp: "GCP Firewall Rules"
+        azure: "Azure Network Security Groups (NSG)"
+
+  # 2. Compute Components
+  compute:
+    serverless_function:
+      type: function_as_a_service
+      purpose: Execute file transfer logic
+      properties:
+        runtime: "python3.11"
+        memory: "512MB"
+        timeout: "300s"
+        network_isolation: true
+        environment_variables:
+          STORAGE_BUCKET: "reference:storage.bucket.name"
+          SECRET_ARN: "reference:secrets.credentials.arn"
+          REMOTE_PATH: "/sftp/path"
+          LOG_LEVEL: "INFO"
+      cloud_mappings:
+        aws: "AWS Lambda Function"
+        gcp: "GCP Cloud Functions (2nd gen) / Cloud Run"
+        azure: "Azure Functions"
+    
+    function_network_config:
+      type: compute_network_attachment
+      purpose: Attach function to private network
+      properties:
+        network: "reference:networking.virtual_network"
+        subnets: "reference:networking.private_subnets"
+        security_groups: "reference:networking.security_groups"
+      cloud_mappings:
+        aws: "Lambda VPC Configuration"
+        gcp: "VPC Connector for Cloud Functions"
+        azure: "VNet Integration"
+
+  # 3. Storage Components
+  storage:
+    object_bucket:
+      type: object_storage
+      purpose: Secure storage for transferred files
+      properties:
+        versioning: true
+        encryption:
+          type: "server_side"
+          algorithm: "AES256"
+        public_access: false
+        lifecycle_policies:
+          - transition_to_cold_storage_days: 30
+          - transition_to_archive_days: 90
+          - transition_to_deep_archive_days: 180
+          - delete_old_versions_days: 90
+      cloud_mappings:
+        aws: "AWS S3 Bucket"
+        gcp: "GCP Cloud Storage Bucket"
+        azure: "Azure Blob Storage Container"
+    
+    bucket_encryption:
+      type: encryption_configuration
+      purpose: Data encryption at rest
+      properties:
+        encryption_type: "server_side"
+        key_management: "platform_managed"
+      cloud_mappings:
+        aws: "S3 SSE-S3 / SSE-KMS"
+        gcp: "Google-managed encryption keys / CMEK"
+        azure: "Azure Storage encryption / Customer-managed keys"
+    
+    bucket_access_policy:
+      type: access_policy
+      purpose: Least privilege access control
+      principals:
+        - "reference:compute.serverless_function.identity"
+      permissions:
+        - "read_object"
+        - "write_object"
+        - "list_bucket"
+      cloud_mappings:
+        aws: "S3 Bucket Policy"
+        gcp: "IAM Bindings on Cloud Storage"
+        azure: "Azure RBAC / Storage Account IAM"
+
+  # 4. Identity and Access Management
+  iam:
+    function_execution_role:
+      type: service_identity
+      purpose: Identity for serverless function
+      properties:
+        trusted_service: "serverless_function"
+      cloud_mappings:
+        aws: "IAM Role for Lambda"
+        gcp: "Service Account for Cloud Functions"
+        azure: "Managed Identity"
+    
+    storage_access_policy:
+      type: permission_policy
+      purpose: Grant storage access to function
+      permissions:
+        - action: "put_object"
+          resource: "reference:storage.object_bucket"
+        - action: "get_object"
+          resource: "reference:storage.object_bucket"
+        - action: "list_bucket"
+          resource: "reference:storage.object_bucket"
+      cloud_mappings:
+        aws: "IAM Policy (S3 permissions)"
+        gcp: "IAM Role (Storage Object Admin)"
+        azure: "Storage Blob Data Contributor Role"
+    
+    logs_access_policy:
+      type: permission_policy
+      purpose: Grant logging permissions to function
+      permissions:
+        - action: "create_log_group"
+        - action: "create_log_stream"
+        - action: "put_log_events"
+      cloud_mappings:
+        aws: "IAM Policy (CloudWatch Logs permissions)"
+        gcp: "IAM Role (Logging Writer)"
+        azure: "Monitoring Metrics Publisher Role"
+    
+    secrets_access_policy:
+      type: permission_policy
+      purpose: Grant secret read access to function
+      permissions:
+        - action: "get_secret_value"
+          resource: "reference:secrets.credentials"
+      cloud_mappings:
+        aws: "IAM Policy (Secrets Manager permissions)"
+        gcp: "IAM Role (Secret Manager Accessor)"
+        azure: "Key Vault Secrets User Role"
+    
+    network_policy:
+      type: permission_policy
+      purpose: VPC/network permissions for function
+      permissions:
+        - action: "create_network_interface"
+        - action: "describe_network_interface"
+        - action: "delete_network_interface"
+      cloud_mappings:
+        aws: "IAM Policy (EC2 network interface permissions)"
+        gcp: "Compute Network User Role"
+        azure: "Network Contributor Role"
+
+  # 5. Secrets Management
+  secrets:
+    credentials_store:
+      type: secrets_manager
+      purpose: Secure storage for SFTP credentials
+      properties:
+        encryption: true
+        rotation_enabled: false
+        secret_data:
+          username: "sftp_user"
+          password: "encrypted_password"
+          host: "sftp.example.com"
+          port: 22
+      cloud_mappings:
+        aws: "AWS Secrets Manager"
+        gcp: "GCP Secret Manager"
+        azure: "Azure Key Vault"
+
+  # 6. Monitoring and Logging
+  monitoring:
+    log_group:
+      type: centralized_logging
+      purpose: Collect function execution logs
+      properties:
+        retention_days: 7
+        encryption: true
+      cloud_mappings:
+        aws: "CloudWatch Log Group"
+        gcp: "Cloud Logging"
+        azure: "Azure Monitor Logs / Log Analytics Workspace"
+    
+    metrics:
+      type: metrics_monitoring
+      purpose: Track function performance
+      metrics:
+        - invocations
+        - duration
+        - errors
+        - throttles
+      cloud_mappings:
+        aws: "CloudWatch Metrics"
+        gcp: "Cloud Monitoring (formerly Stackdriver)"
+        azure: "Azure Monitor Metrics"
+    
+    alarms:
+      type: alerting
+      purpose: Notify on errors or failures
+      alarm_conditions:
+        - metric: "errors"
+          threshold: 5
+          period: "5 minutes"
+      cloud_mappings:
+        aws: "CloudWatch Alarms"
+        gcp: "Cloud Monitoring Alerting Policies"
+        azure: "Azure Monitor Alerts"
+
+  # 7. Automation and Scheduling
+  automation:
+    scheduler:
+      type: event_scheduler
+      purpose: Trigger file transfer on schedule
+      properties:
+        schedule: "cron(0 2 * * ? *)"  # Daily at 2 AM UTC
+        enabled: true
+        target: "reference:compute.serverless_function"
+      cloud_mappings:
+        aws: "EventBridge (CloudWatch Events) Rule"
+        gcp: "Cloud Scheduler"
+        azure: "Azure Logic Apps / Timer Trigger"
+
+# Data Flow Architecture
+data_flow:
+  stages:
+    - stage: 1
+      name: "Scheduled Trigger"
+      component: "automation.scheduler"
+      action: "Invoke serverless function on schedule"
+    
+    - stage: 2
+      name: "Function Initialization"
+      component: "compute.serverless_function"
+      action: "Function starts in private network, retrieves SFTP credentials from secrets manager"
+    
+    - stage: 3
+      name: "SFTP Connection"
+      component: "compute.serverless_function"
+      action: "Connect to legacy SFTP server over internet (port 22)"
+      network_path: "Private Subnet → Internet Gateway/NAT (for SFTP only)"
+    
+    - stage: 4
+      name: "File Retrieval"
+      component: "compute.serverless_function"
+      action: "Download files from SFTP server"
+    
+    - stage: 5
+      name: "Storage Upload"
+      component: "compute.serverless_function"
+      action: "Upload files to object storage via private endpoint"
+      network_path: "Private Subnet → Storage Gateway Endpoint → Object Storage"
+    
+    - stage: 6
+      name: "Logging"
+      component: "monitoring.log_group"
+      action: "Log execution details and status"
+
+# Security Architecture
+security:
+  layers:
+    network:
+      - "Virtual network isolation"
+      - "Private subnets with no direct internet access for storage"
+      - "Security groups/firewall rules for fine-grained control"
+      - "Private service endpoints for object storage"
+    
+    data:
+      - "Encryption in transit (SFTP, TLS/HTTPS)"
+      - "Encryption at rest (object storage)"
+      - "Versioning enabled for data protection"
+    
+    identity:
+      - "Least privilege IAM policies"
+      - "Service-to-service authentication"
+      - "Secrets manager for credential storage"
+      - "No hardcoded credentials"
+    
+    monitoring:
+      - "Centralized logging for audit trail"
+      - "Metrics and alarms for anomaly detection"
+      - "Retention policies for compliance"
+
+# Cost Optimization
+cost_optimization:
+  strategies:
+    - strategy: "Use Gateway Endpoint instead of NAT Gateway"
+      savings: "~$32/month per availability zone"
+      clouds:
+        aws: "S3 Gateway Endpoint (FREE)"
+        gcp: "Private Google Access (FREE)"
+        azure: "Service Endpoints (FREE)"
+    
+    - strategy: "Serverless compute (pay per use)"
+      savings: "No idle costs vs always-on VMs"
+      estimated_cost: "$0.20 - $0.50/month for 1000 executions"
+    
+    - strategy: "Storage lifecycle policies"
+      savings: "Up to 96% on archived data"
+      transitions:
+        - "30 days → Infrequent Access (46% savings)"
+        - "90 days → Archive (83% savings)"
+        - "180 days → Deep Archive (96% savings)"
+    
+    - strategy: "Log retention limits"
+      savings: "Minimize storage costs"
+      retention: "7 days for development, 30-90 days for production"
+
+# Deployment Considerations
+deployment:
+  prerequisites:
+    - "Cloud account with appropriate permissions"
+    - "SFTP server credentials"
+    - "Infrastructure as Code tool (Terraform, Pulumi, or cloud-native)"
+  
+  steps:
+    - "Create virtual network and subnets"
+    - "Configure security groups/firewall rules"
+    - "Create object storage bucket with encryption"
+    - "Set up private storage endpoint"
+    - "Create secrets manager secret with SFTP credentials"
+    - "Create IAM role and policies for function"
+    - "Deploy serverless function with network configuration"
+    - "Configure scheduler (optional)"
+    - "Set up monitoring and alarms"
+  
+  validation:
+    - "Test function invocation"
+    - "Verify network connectivity (SFTP and storage)"
+    - "Check logs for errors"
+    - "Validate file transfer to storage"
+    - "Review cost estimates"
+
+# Cloud-Specific Implementation Notes
+implementation_notes:
+  aws:
+    - "Use Terraform AWS provider or CloudFormation"
+    - "Lambda requires VPC configuration with subnets and security groups"
+    - "S3 Gateway Endpoint automatically updates route tables"
+    - "Use AWS Systems Manager Parameter Store as alternative to Secrets Manager"
+    - "Consider Lambda Layers for common dependencies"
+  
+  gcp:
+    - "Use Terraform GCP provider or Deployment Manager"
+    - "Cloud Functions (2nd gen) recommended for VPC support"
+    - "Enable Private Google Access on subnets for Cloud Storage"
+    - "Use VPC Connector for Cloud Functions networking"
+    - "Consider Cloud Run for more control over networking"
+  
+  azure:
+    - "Use Terraform Azure provider or ARM templates"
+    - "Azure Functions with VNet Integration"
+    - "Use Storage Service Endpoints or Private Endpoints"
+    - "Managed Identity for authentication"
+    - "Consider Azure Container Instances as alternative"
+
+# Component Mapping Table
+cloud_service_mapping:
+  networking:
+    abstract: "Virtual Network"
+    aws: "VPC"
+    gcp: "VPC Network"
+    azure: "Virtual Network (VNet)"
+  
+  network_segments:
+    abstract: "Private Subnets"
+    aws: "Subnets"
+    gcp: "Subnets"
+    azure: "Subnets"
+  
+  firewall:
+    abstract: "Network Firewall Rules"
+    aws: "Security Groups"
+    gcp: "Firewall Rules"
+    azure: "Network Security Groups (NSG)"
+  
+  private_endpoint:
+    abstract: "Private Service Endpoint"
+    aws: "VPC Endpoint (Gateway for S3)"
+    gcp: "Private Google Access"
+    azure: "Service Endpoint / Private Endpoint"
+  
+  serverless:
+    abstract: "Serverless Function"
+    aws: "Lambda"
+    gcp: "Cloud Functions / Cloud Run"
+    azure: "Azure Functions"
+  
+  object_storage:
+    abstract: "Object Storage"
+    aws: "S3"
+    gcp: "Cloud Storage"
+    azure: "Blob Storage"
+  
+  identity:
+    abstract: "Service Identity"
+    aws: "IAM Role"
+    gcp: "Service Account"
+    azure: "Managed Identity"
+  
+  secrets:
+    abstract: "Secrets Manager"
+    aws: "Secrets Manager / Parameter Store"
+    gcp: "Secret Manager"
+    azure: "Key Vault"
+  
+  logging:
+    abstract: "Centralized Logging"
+    aws: "CloudWatch Logs"
+    gcp: "Cloud Logging"
+    azure: "Azure Monitor Logs"
+  
+  metrics:
+    abstract: "Metrics and Monitoring"
+    aws: "CloudWatch"
+    gcp: "Cloud Monitoring"
+    azure: "Azure Monitor"
+  
+  scheduler:
+    abstract: "Event Scheduler"
+    aws: "EventBridge"
+    gcp: "Cloud Scheduler"
+    azure: "Logic Apps / Timer Trigger"

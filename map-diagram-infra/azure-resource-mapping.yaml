@@ -1,0 +1,617 @@
+# Azure-Specific Resource Mapping
+# Detailed Azure implementation of the universal infrastructure composer
+
+cloud_provider: azure
+provider_full_name: "Microsoft Azure"
+region: "eastus"
+subscription_id: "<AZURE_SUBSCRIPTION_ID>"
+resource_group: "rg-secure-file-transfer"
+
+# Azure Service Mapping
+azure_services:
+  
+  # 1. Networking (Azure Virtual Network)
+  networking:
+    virtual_network:
+      service: "Azure Virtual Network (VNet)"
+      resource_type: "azurerm_virtual_network"
+      properties:
+        name: "vnet-file-transfer"
+        address_space: ["10.0.0.0/16"]
+        location: "eastus"
+        resource_group_name: "reference:resource_group"
+      terraform_resource: "azurerm_virtual_network.main"
+      console_url: "https://portal.azure.com/#blade/HubsExtension/BrowseResource/resourceType/Microsoft.Network%2FvirtualNetworks"
+      pricing: "FREE (no charge for VNet)"
+      documentation: "https://azure.microsoft.com/en-us/pricing/details/virtual-network/"
+    
+    private_subnets:
+      service: "Azure Subnets"
+      resource_type: "azurerm_subnet"
+      count: 2
+      properties:
+        name: "subnet-private"
+        address_prefixes: ["10.0.1.0/24", "10.0.2.0/24"]
+        virtual_network_name: "reference:virtual_network"
+        resource_group_name: "reference:resource_group"
+        service_endpoints: ["Microsoft.Storage"]  # KEY: Enables Service Endpoint for Storage
+      terraform_resource: "azurerm_subnet.private[*]"
+      pricing: "FREE (included with VNet)"
+      documentation: "https://docs.microsoft.com/en-us/azure/virtual-network/virtual-network-service-endpoints-overview"
+    
+    network_security_group:
+      service: "Azure Network Security Group (NSG)"
+      resource_type: "azurerm_network_security_group"
+      properties:
+        name: "nsg-function-app"
+        location: "eastus"
+        resource_group_name: "reference:resource_group"
+        security_rules:
+          allow_https_outbound:
+            name: "AllowHTTPSOutbound"
+            priority: 100
+            direction: "Outbound"
+            access: "Allow"
+            protocol: "Tcp"
+            source_port_range: "*"
+            destination_port_range: "443"
+            source_address_prefix: "*"
+            destination_address_prefix: "Storage"  # Service Tag for Azure Storage
+            description: "HTTPS to Azure Storage via Service Endpoint"
+          
+          allow_sftp_outbound:
+            name: "AllowSFTPOutbound"
+            priority: 110
+            direction: "Outbound"
+            access: "Allow"
+            protocol: "Tcp"
+            source_port_range: "*"
+            destination_port_range: "22"
+            source_address_prefix: "*"
+            destination_address_prefix: "*"
+            description: "SSH/SFTP to legacy server"
+      terraform_resource: "azurerm_network_security_group.function"
+      pricing: "FREE (up to 100 rules)"
+    
+    subnet_nsg_association:
+      service: "Azure Network Security Group"
+      resource_type: "azurerm_subnet_network_security_group_association"
+      count: 2
+      properties:
+        subnet_id: "reference:private_subnets"
+        network_security_group_id: "reference:network_security_group"
+      terraform_resource: "azurerm_subnet_network_security_group_association.private[*]"
+      pricing: "FREE"
+    
+    storage_service_endpoint:
+      service: "Azure VNet Service Endpoints"
+      concept: "Service Endpoint for Azure Storage"
+      description: |
+        Service Endpoints extend your VNet private address space to Azure services.
+        Traffic to Azure Storage stays on the Azure backbone network.
+        This is the Azure equivalent of AWS S3 Gateway Endpoint.
+      configuration:
+        subnet_property: 'service_endpoints = ["Microsoft.Storage"]'
+        network_rule: "Configure storage account to allow access from specific VNet/subnet"
+      pricing: "FREE (no additional cost)"
+      documentation: "https://docs.microsoft.com/en-us/azure/virtual-network/virtual-network-service-endpoints-overview"
+    
+    private_endpoint_alternative:
+      service: "Azure Private Link / Private Endpoint"
+      resource_type: "azurerm_private_endpoint"
+      description: |
+        Alternative to Service Endpoints with more security.
+        Creates a private IP in your VNet for the storage account.
+        Recommended for production environments.
+      properties:
+        name: "pe-storage"
+        location: "eastus"
+        resource_group_name: "reference:resource_group"
+        subnet_id: "reference:private_subnet"
+        private_service_connection:
+          name: "storage-privateserviceconnection"
+          private_connection_resource_id: "reference:storage_account"
+          subresource_names: ["blob"]
+      terraform_resource: "azurerm_private_endpoint.storage"
+      pricing: "$0.01 per hour ($7.30/month) + $0.01 per GB processed"
+      documentation: "https://azure.microsoft.com/en-us/pricing/details/private-link/"
+      note: "Service Endpoints are FREE, Private Endpoints have a cost but provide more isolation"
+
+  # 2. Compute (Azure Functions)
+  compute:
+    app_service_plan:
+      service: "Azure App Service Plan"
+      resource_type: "azurerm_service_plan"
+      properties:
+        name: "plan-file-transfer"
+        location: "eastus"
+        resource_group_name: "reference:resource_group"
+        os_type: "Linux"
+        sku_name: "EP1"  # Elastic Premium for VNet integration
+      terraform_resource: "azurerm_service_plan.function"
+      pricing:
+        ep1: "$0.195 per vCPU hour + $0.015 per GB-hour"
+        estimated: "$143/month for always-on instance"
+      alternative: "Use Consumption plan with VNet integration (less expensive)"
+      documentation: "https://azure.microsoft.com/en-us/pricing/details/app-service/linux/"
+    
+    function_app:
+      service: "Azure Functions"
+      resource_type: "azurerm_linux_function_app"
+      properties:
+        name: "func-file-transfer"
+        location: "eastus"
+        resource_group_name: "reference:resource_group"
+        service_plan_id: "reference:app_service_plan"
+        storage_account_name: "reference:function_storage_account"
+        storage_account_access_key: "reference:storage_account_key"
+        site_config:
+          application_stack:
+            python_version: "3.11"
+          app_settings:
+            STORAGE_ACCOUNT_NAME: "reference:storage_account"
+            KEY_VAULT_URI: "reference:key_vault.vault_uri"
+            SFTP_REMOTE_PATH: "/sftp/files"
+            LOG_LEVEL: "INFO"
+        identity:
+          type: "SystemAssigned"  # Managed Identity
+      terraform_resource: "azurerm_linux_function_app.file_transfer"
+      pricing:
+        consumption_execution: "$0.20 per 1M executions"
+        consumption_compute: "$0.000016 per GB-s"
+        estimated_monthly: "$0.25 for 1000 executions"
+      documentation: "https://azure.microsoft.com/en-us/pricing/details/functions/"
+    
+    vnet_integration:
+      service: "Azure Functions VNet Integration"
+      resource_type: "azurerm_app_service_virtual_network_swift_connection"
+      properties:
+        app_service_id: "reference:function_app"
+        subnet_id: "reference:private_subnet"
+      terraform_resource: "azurerm_app_service_virtual_network_swift_connection.function"
+      pricing: "FREE (included with Premium/Dedicated plans)"
+      documentation: "https://docs.microsoft.com/en-us/azure/azure-functions/functions-networking-options"
+      note: "Regional VNet Integration allows function to access resources in VNet"
+
+  # 3. Storage (Azure Blob Storage)
+  storage:
+    storage_account:
+      service: "Azure Storage Account"
+      resource_type: "azurerm_storage_account"
+      properties:
+        name: "stfileransfer"  # Must be globally unique, 3-24 lowercase alphanumeric
+        location: "eastus"
+        resource_group_name: "reference:resource_group"
+        account_tier: "Standard"
+        account_replication_type: "LRS"  # Locally Redundant Storage
+        account_kind: "StorageV2"
+        enable_https_traffic_only: true
+        min_tls_version: "TLS1_2"
+        allow_nested_items_to_be_public: false
+        network_rules:
+          default_action: "Deny"
+          bypass: ["AzureServices"]
+          virtual_network_subnet_ids: ["reference:private_subnets"]
+      terraform_resource: "azurerm_storage_account.file_transfer"
+      pricing:
+        hot: "$0.0184 per GB/month"
+        cool: "$0.01 per GB/month"
+        archive: "$0.00099 per GB/month"
+      documentation: "https://azure.microsoft.com/en-us/pricing/details/storage/blobs/"
+    
+    blob_container:
+      service: "Azure Blob Storage"
+      resource_type: "azurerm_storage_container"
+      properties:
+        name: "files"
+        storage_account_name: "reference:storage_account"
+        container_access_type: "private"
+      terraform_resource: "azurerm_storage_container.files"
+      pricing: "Included in storage account"
+    
+    storage_encryption:
+      service: "Azure Storage Encryption"
+      automatic: true
+      description: |
+        Azure Storage automatically encrypts all data at rest using 256-bit AES encryption.
+        Can use Microsoft-managed keys or customer-managed keys.
+      properties:
+        encryption_type: "Microsoft.Storage"
+        key_source: "Microsoft.Storage"  # Or "Microsoft.Keyvault" for BYOK
+      pricing: "FREE (included with storage account)"
+      documentation: "https://docs.microsoft.com/en-us/azure/storage/common/storage-service-encryption"
+    
+    blob_versioning:
+      service: "Azure Blob Versioning"
+      resource_type: "azurerm_storage_account"
+      properties:
+        blob_properties:
+          versioning_enabled: true
+          delete_retention_policy:
+            days: 90
+      pricing: "Same as standard blob pricing for each version"
+    
+    lifecycle_management:
+      service: "Azure Blob Lifecycle Management"
+      resource_type: "azurerm_storage_management_policy"
+      properties:
+        storage_account_id: "reference:storage_account"
+        rule:
+          - name: "tierToCool"
+            enabled: true
+            filters:
+              blob_types: ["blockBlob"]
+            actions:
+              base_blob:
+                tier_to_cool_after_days_since_modification_greater_than: 30
+                tier_to_archive_after_days_since_modification_greater_than: 90
+              version:
+                delete_after_days_since_creation: 90
+      terraform_resource: "azurerm_storage_management_policy.lifecycle"
+      pricing: "FREE (lifecycle rules)"
+
+  # 4. IAM (Azure Role-Based Access Control)
+  iam:
+    managed_identity:
+      service: "Azure Managed Identity"
+      type: "System-assigned"
+      automatic: true
+      description: "Automatically created with Function App (identity.type = SystemAssigned)"
+      properties:
+        principal_id: "auto-generated"
+        tenant_id: "auto-generated"
+      pricing: "FREE"
+      documentation: "https://docs.microsoft.com/en-us/azure/active-directory/managed-identities-azure-resources/"
+    
+    storage_role_assignment:
+      service: "Azure RBAC"
+      resource_type: "azurerm_role_assignment"
+      properties:
+        scope: "reference:storage_account.id"
+        role_definition_name: "Storage Blob Data Contributor"
+        principal_id: "reference:function_app.identity.principal_id"
+      terraform_resource: "azurerm_role_assignment.storage_access"
+      pricing: "FREE"
+      documentation: "https://docs.microsoft.com/en-us/azure/role-based-access-control/"
+    
+    key_vault_role_assignment:
+      service: "Azure RBAC"
+      resource_type: "azurerm_role_assignment"
+      properties:
+        scope: "reference:key_vault.id"
+        role_definition_name: "Key Vault Secrets User"
+        principal_id: "reference:function_app.identity.principal_id"
+      terraform_resource: "azurerm_role_assignment.keyvault_access"
+      pricing: "FREE"
+    
+    monitoring_role_assignment:
+      service: "Azure RBAC"
+      resource_type: "azurerm_role_assignment"
+      properties:
+        scope: "reference:resource_group.id"
+        role_definition_name: "Monitoring Metrics Publisher"
+        principal_id: "reference:function_app.identity.principal_id"
+      terraform_resource: "azurerm_role_assignment.monitoring_access"
+      pricing: "FREE"
+
+  # 5. Secrets Management
+  secrets:
+    key_vault:
+      service: "Azure Key Vault"
+      resource_type: "azurerm_key_vault"
+      properties:
+        name: "kv-file-transfer"
+        location: "eastus"
+        resource_group_name: "reference:resource_group"
+        tenant_id: "reference:tenant_id"
+        sku_name: "standard"
+        soft_delete_retention_days: 90
+        purge_protection_enabled: false
+        enabled_for_deployment: false
+        enabled_for_disk_encryption: false
+        enabled_for_template_deployment: false
+        enable_rbac_authorization: true  # Use RBAC instead of access policies
+      terraform_resource: "azurerm_key_vault.secrets"
+      pricing:
+        operations: "$0.03 per 10,000 transactions"
+        estimated_monthly: "$0.05"
+      documentation: "https://azure.microsoft.com/en-us/pricing/details/key-vault/"
+    
+    secret:
+      service: "Azure Key Vault Secrets"
+      resource_type: "azurerm_key_vault_secret"
+      properties:
+        name: "sftp-credentials"
+        key_vault_id: "reference:key_vault"
+        value:
+          username: "sftp_user"
+          password: "encrypted_password"
+          host: "sftp.example.com"
+          port: "22"
+      terraform_resource: "azurerm_key_vault_secret.sftp_credentials"
+      pricing: "Included in Key Vault operations cost"
+
+  # 6. Monitoring and Logging
+  monitoring:
+    log_analytics_workspace:
+      service: "Azure Log Analytics"
+      resource_type: "azurerm_log_analytics_workspace"
+      properties:
+        name: "log-file-transfer"
+        location: "eastus"
+        resource_group_name: "reference:resource_group"
+        sku: "PerGB2018"
+        retention_in_days: 30
+      terraform_resource: "azurerm_log_analytics_workspace.main"
+      pricing:
+        pay_as_you_go: "$2.76 per GB ingested"
+        first_5gb: "FREE per month"
+        retention_first_31_days: "FREE"
+      estimated_cost: "$0.05 - $2.00/month"
+      documentation: "https://azure.microsoft.com/en-us/pricing/details/monitor/"
+    
+    application_insights:
+      service: "Azure Application Insights"
+      resource_type: "azurerm_application_insights"
+      properties:
+        name: "appi-file-transfer"
+        location: "eastus"
+        resource_group_name: "reference:resource_group"
+        application_type: "web"
+        workspace_id: "reference:log_analytics_workspace"
+      terraform_resource: "azurerm_application_insights.function"
+      pricing:
+        first_5gb: "FREE per month"
+        additional: "$2.76 per GB"
+      estimated_cost: "$0.00 (within free tier)"
+      documentation: "https://azure.microsoft.com/en-us/pricing/details/monitor/"
+    
+    diagnostic_settings:
+      service: "Azure Monitor"
+      resource_type: "azurerm_monitor_diagnostic_setting"
+      properties:
+        name: "diag-function"
+        target_resource_id: "reference:function_app"
+        log_analytics_workspace_id: "reference:log_analytics_workspace"
+        log:
+          - category: "FunctionAppLogs"
+            enabled: true
+        metric:
+          - category: "AllMetrics"
+            enabled: true
+      terraform_resource: "azurerm_monitor_diagnostic_setting.function"
+      pricing: "Included in Log Analytics pricing"
+    
+    metric_alert:
+      service: "Azure Monitor Alerts"
+      resource_type: "azurerm_monitor_metric_alert"
+      properties:
+        name: "alert-function-errors"
+        resource_group_name: "reference:resource_group"
+        scopes: ["reference:function_app"]
+        description: "Alert when function errors exceed threshold"
+        severity: 2
+        criteria:
+          metric_namespace: "Microsoft.Web/sites"
+          metric_name: "FunctionExecutionCount"
+          aggregation: "Total"
+          operator: "GreaterThan"
+          threshold: 5
+      terraform_resource: "azurerm_monitor_metric_alert.errors"
+      pricing:
+        metric_alerts: "$0.10 per month for first 10 signals"
+
+  # 7. Automation
+  automation:
+    logic_app:
+      service: "Azure Logic Apps (Consumption)"
+      resource_type: "azurerm_logic_app_workflow"
+      properties:
+        name: "logic-file-transfer-scheduler"
+        location: "eastus"
+        resource_group_name: "reference:resource_group"
+      terraform_resource: "azurerm_logic_app_workflow.scheduler"
+      pricing:
+        actions: "$0.000025 per action execution"
+        estimated_monthly: "$0.075 for daily execution (30 days * 3 actions)"
+      documentation: "https://azure.microsoft.com/en-us/pricing/details/logic-apps/"
+    
+    logic_app_trigger:
+      service: "Azure Logic Apps"
+      resource_type: "azurerm_logic_app_trigger_recurrence"
+      properties:
+        name: "daily-trigger"
+        logic_app_id: "reference:logic_app"
+        frequency: "Day"
+        interval: 1
+        start_time: "2025-01-01T02:00:00Z"
+      terraform_resource: "azurerm_logic_app_trigger_recurrence.daily"
+      pricing: "Included in Logic App actions"
+    
+    alternative_function_timer:
+      service: "Azure Functions Timer Trigger"
+      description: |
+        Alternative to Logic Apps: Use Azure Functions built-in timer trigger.
+        More cost-effective for simple scheduling.
+      function_json:
+        bindings:
+          - name: "timer"
+            type: "timerTrigger"
+            direction: "in"
+            schedule: "0 0 2 * * *"  # Daily at 2 AM
+      pricing: "FREE (no additional cost beyond function execution)"
+
+# Total Azure Infrastructure Cost Estimate
+cost_estimate:
+  option_1_consumption_plan:
+    monthly:
+      function_app_consumption: "$0.25"
+      storage_account_100gb: "$1.84"
+      storage_requests: "$0.01"
+      key_vault: "$0.05"
+      log_analytics: "$0.05"
+      application_insights: "$0.00"  # Free tier
+      logic_apps: "$0.075"
+      service_endpoints: "$0.00"  # FREE
+      total: "$2.28/month"
+    
+    annual:
+      estimated: "$27.36/year"
+    
+    note: "Consumption plan is most cost-effective for infrequent executions"
+  
+  option_2_premium_plan:
+    monthly:
+      function_app_premium_ep1: "$143.00"
+      storage_account_100gb: "$1.84"
+      storage_requests: "$0.01"
+      key_vault: "$0.05"
+      log_analytics: "$0.05"
+      application_insights: "$0.00"
+      logic_apps: "$0.075"
+      service_endpoints: "$0.00"  # FREE
+      total: "$145.02/month"
+    
+    note: "Premium plan required for always-on scenarios and faster cold starts"
+  
+  option_3_private_endpoints:
+    monthly:
+      function_app_consumption: "$0.25"
+      storage_account_100gb: "$1.84"
+      storage_requests: "$0.01"
+      key_vault: "$0.05"
+      log_analytics: "$0.05"
+      application_insights: "$0.00"
+      logic_apps: "$0.075"
+      private_endpoint: "$7.30"
+      private_endpoint_data: "$0.10"  # Estimated
+      total: "$9.67/month"
+    
+    note: "Private Endpoints provide better isolation but add cost"
+
+# Azure-Specific Best Practices
+best_practices:
+  - "Use Service Endpoints (FREE) instead of Private Endpoints for cost optimization"
+  - "Use Consumption plan for infrequent workloads to minimize costs"
+  - "Enable Managed Identity for authentication (no secrets in code)"
+  - "Use storage account network rules to restrict access to specific VNets"
+  - "Enable blob versioning for data protection"
+  - "Use lifecycle management to transition data to cool/archive tiers"
+  - "Set up Application Insights for comprehensive monitoring"
+  - "Use Key Vault for secret management with RBAC"
+  - "Enable diagnostic settings to send logs to Log Analytics"
+  - "Tag all resources for cost allocation and governance"
+  - "Use Azure Policy for compliance enforcement"
+  - "Enable soft delete and purge protection on Key Vault"
+
+# Deployment Commands
+deployment:
+  terraform:
+    init: "terraform init"
+    plan: "terraform plan -out=tfplan"
+    apply: "terraform apply tfplan"
+    destroy: "terraform destroy"
+  
+  azure_cli:
+    login: "az login"
+    set_subscription: "az account set --subscription SUBSCRIPTION_ID"
+    create_resource_group: "az group create --name rg-secure-file-transfer --location eastus"
+    
+    deploy_function: |
+      func azure functionapp publish func-file-transfer \
+        --python
+    
+    invoke_function: |
+      az functionapp function invoke \
+        --resource-group rg-secure-file-transfer \
+        --name func-file-transfer \
+        --function-name FileTransferFunction
+    
+    view_logs: |
+      az functionapp logs tail \
+        --resource-group rg-secure-file-transfer \
+        --name func-file-transfer
+    
+    view_metrics: |
+      az monitor metrics list \
+        --resource /subscriptions/SUB_ID/resourceGroups/rg-secure-file-transfer/providers/Microsoft.Web/sites/func-file-transfer \
+        --metric FunctionExecutionCount
+
+# Monitoring and Observability
+monitoring_queries:
+  log_analytics_kql:
+    error_analysis: |
+      FunctionAppLogs
+      | where Level == "Error"
+      | project TimeGenerated, Message, ExceptionDetails
+      | order by TimeGenerated desc
+      | take 100
+    
+    performance_stats: |
+      FunctionAppLogs
+      | where Message contains "Execution time"
+      | summarize avg(DurationMs), max(DurationMs) by bin(TimeGenerated, 5m)
+    
+    success_rate: |
+      FunctionAppLogs
+      | where Message contains "File transferred successfully"
+      | summarize count() by bin(TimeGenerated, 1h)
+
+# Security Checklist
+security:
+  network:
+    - "✓ Function App integrated with VNet"
+    - "✓ Storage Service Endpoints enabled on subnets"
+    - "✓ NSG rules allow only required outbound traffic"
+    - "✓ Storage account network rules restrict access to specific VNets"
+    - "✓ No public IP addresses on compute resources"
+  
+  data:
+    - "✓ Storage account encryption enabled (automatic)"
+    - "✓ Blob versioning enabled"
+    - "✓ Public access disabled on storage account"
+    - "✓ TLS 1.2 minimum enforced"
+    - "✓ HTTPS only traffic enabled"
+  
+  identity:
+    - "✓ Managed Identity for authentication"
+    - "✓ RBAC with least privilege roles"
+    - "✓ Secrets stored in Key Vault"
+    - "✓ Key Vault RBAC authorization enabled"
+    - "✓ No access keys stored in code"
+  
+  monitoring:
+    - "✓ Application Insights enabled"
+    - "✓ Diagnostic settings configured"
+    - "✓ Metric alerts for error detection"
+    - "✓ Log retention policy configured"
+    - "✓ NSG Flow Logs (optional) for network monitoring"
+
+# Migration from AWS
+migration_from_aws:
+  networking:
+    aws_vpc: "→ Azure Virtual Network (VNet)"
+    aws_private_subnet: "→ Azure Subnet with Service Endpoints"
+    aws_security_group: "→ Network Security Group (NSG)"
+    aws_s3_gateway_endpoint: "→ Service Endpoint (FREE) OR Private Endpoint ($7.30/mo)"
+  
+  compute:
+    aws_lambda: "→ Azure Functions"
+    lambda_vpc_config: "→ VNet Integration"
+  
+  storage:
+    aws_s3: "→ Azure Blob Storage"
+    s3_lifecycle: "→ Blob Lifecycle Management"
+    s3_versioning: "→ Blob Versioning"
+  
+  iam:
+    iam_role: "→ Managed Identity"
+    iam_policy: "→ Azure RBAC Role Assignments"
+  
+  secrets:
+    aws_secrets_manager: "→ Azure Key Vault"
+  
+  monitoring:
+    cloudwatch_logs: "→ Log Analytics / Application Insights"
+    cloudwatch_metrics: "→ Azure Monitor Metrics"
+    eventbridge: "→ Logic Apps OR Function Timer Trigger"
