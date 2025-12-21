@@ -1,0 +1,167 @@
+```mermaid
+graph TB
+    subgraph "EXTERNAL SYSTEMS"
+        SFTP[Legacy SFTP Server<br/>Port 22 SSH/SFTP]
+        SCHEDULE[Scheduler/Trigger<br/>EventBridge/Cloud Scheduler/Logic Apps]
+    end
+
+    subgraph "CLOUD PLATFORM - AWS/GCP/Azure"
+        subgraph "VIRTUAL PRIVATE NETWORK<br/>VPC / VPC / VNet<br/>CIDR: 10.0.0.0/16"
+            subgraph "PRIVATE SUBNET - AZ1<br/>10.0.1.0/24"
+                FUNC1[Serverless Function Instance 1<br/>Lambda/Cloud Functions/Azure Functions<br/>Runtime: Python 3.11<br/>Memory: 512MB<br/>Timeout: 300s]
+            end
+            
+            subgraph "PRIVATE SUBNET - AZ2<br/>10.0.2.0/24"
+                FUNC2[Serverless Function Instance 2<br/>Lambda/Cloud Functions/Azure Functions<br/>Runtime: Python 3.11<br/>Memory: 512MB<br/>Timeout: 300s]
+            end
+            
+            SG[Network Security<br/>Security Group/Firewall/NSG<br/>Egress: HTTPS 443, SSH 22]
+            
+            RT[Route Table<br/>Routes traffic to endpoints]
+            
+            PE[Private Service Endpoint<br/>VPC Gateway Endpoint FREE AWS<br/>Private Service Connect GCP<br/>Private Endpoint $7.20/mo Azure]
+        end
+        
+        subgraph "STORAGE LAYER"
+            STORAGE[Object Storage<br/>S3/Cloud Storage/Blob Storage<br/>Encryption: AES-256<br/>Versioning: Enabled<br/>Public Access: Blocked]
+            
+            LIFECYCLE[Lifecycle Policies<br/>Day 30: Infrequent Access<br/>Day 90: Archive<br/>Day 180: Deep Archive]
+        end
+        
+        subgraph "SECURITY & IDENTITY"
+            IAM[Identity & Access Management<br/>IAM Role/Service Account/Managed Identity<br/>Principle: Least Privilege]
+            
+            SECRETS[Secret Manager<br/>Secrets Manager/Secret Manager/Key Vault<br/>Stores: SFTP Credentials]
+        end
+        
+        subgraph "OBSERVABILITY"
+            LOGS[Centralized Logging<br/>CloudWatch/Cloud Logging/App Insights<br/>Retention: 7 days]
+            
+            METRICS[Monitoring & Metrics<br/>CloudWatch/Cloud Monitoring/Azure Monitor<br/>Tracks: Invocations, Errors, Duration]
+            
+            ALERTS[Alerting<br/>CloudWatch Alarms/Alerting/Action Groups<br/>Notify: Error rate, Timeouts, Costs]
+        end
+    end
+
+    %% Connections
+    SCHEDULE -->|Triggers| FUNC1
+    SCHEDULE -->|Triggers| FUNC2
+    
+    FUNC1 -->|Uses| SG
+    FUNC2 -->|Uses| SG
+    
+    SG -->|Port 22 SSH| SFTP
+    SG -->|Port 443 HTTPS| PE
+    
+    PE -->|Private Connection| STORAGE
+    STORAGE -->|Applies| LIFECYCLE
+    
+    FUNC1 -->|Assumes Role| IAM
+    FUNC2 -->|Assumes Role| IAM
+    
+    FUNC1 -->|Retrieves Credentials| SECRETS
+    FUNC2 -->|Retrieves Credentials| SECRETS
+    
+    IAM -->|Grants Access| STORAGE
+    IAM -->|Grants Access| SECRETS
+    IAM -->|Grants Access| LOGS
+    
+    FUNC1 -->|Writes Logs| LOGS
+    FUNC2 -->|Writes Logs| LOGS
+    
+    FUNC1 -->|Sends Metrics| METRICS
+    FUNC2 -->|Sends Metrics| METRICS
+    
+    METRICS -->|Triggers| ALERTS
+    LOGS -->|Analyzed by| METRICS
+    
+    RT -.->|Routes| PE
+
+    %% Styling
+    classDef compute fill:#FF9900,stroke:#232F3E,stroke-width:2px,color:#fff
+    classDef storage fill:#3B48CC,stroke:#232F3E,stroke-width:2px,color:#fff
+    classDef network fill:#7AA116,stroke:#232F3E,stroke-width:2px,color:#fff
+    classDef security fill:#DD344C,stroke:#232F3E,stroke-width:2px,color:#fff
+    classDef observability fill:#146EB4,stroke:#232F3E,stroke-width:2px,color:#fff
+    classDef external fill:#879596,stroke:#232F3E,stroke-width:2px,color:#fff
+
+    class FUNC1,FUNC2 compute
+    class STORAGE,LIFECYCLE storage
+    class SG,RT,PE network
+    class IAM,SECRETS security
+    class LOGS,METRICS,ALERTS observability
+    class SFTP,SCHEDULE external
+```
+
+## Diagram Legend
+
+### Component Types
+- 🟧 **Compute** (Orange): Serverless functions
+- 🟦 **Storage** (Blue): Object storage and lifecycle
+- 🟩 **Network** (Green): Network components and connectivity
+- 🟥 **Security** (Red): Identity, access, and secrets
+- 🟦 **Observability** (Light Blue): Logging, monitoring, alerting
+- ⬜ **External** (Gray): External systems
+
+### Connection Types
+- **Solid Lines**: Direct connections and data flow
+- **Dotted Lines**: Routing and control plane
+
+### Multi-Cloud Mapping
+
+#### Compute (Orange)
+- **AWS**: Lambda
+- **GCP**: Cloud Functions (2nd gen)
+- **Azure**: Azure Functions
+
+#### Storage (Blue)
+- **AWS**: S3
+- **GCP**: Cloud Storage
+- **Azure**: Blob Storage
+
+#### Network (Green)
+- **AWS**: VPC, Security Group, VPC Gateway Endpoint (FREE)
+- **GCP**: VPC, Firewall Rules, Private Service Connect
+- **Azure**: VNet, NSG, Private Endpoint ($7.20/month)
+
+#### Security (Red)
+- **AWS**: IAM Role + Policies, Secrets Manager ($0.40/secret)
+- **GCP**: Service Account + IAM, Secret Manager ($0.06/secret)
+- **Azure**: Managed Identity + RBAC, Key Vault ($0.03/secret)
+
+#### Observability (Light Blue)
+- **AWS**: CloudWatch Logs, Metrics, Alarms
+- **GCP**: Cloud Logging, Cloud Monitoring, Alerting
+- **Azure**: Application Insights, Monitor, Action Groups
+
+## Architecture Flow
+
+1. **Trigger**: Scheduler triggers serverless function(s)
+2. **Identity**: Function assumes IAM role/service account
+3. **Secrets**: Function retrieves SFTP credentials from secret manager
+4. **Connect**: Function connects to SFTP server via security group (port 22)
+5. **Download**: Function downloads file(s) from SFTP
+6. **Upload**: Function uploads to object storage via private endpoint (port 443)
+7. **Encrypt**: Storage encrypts with AES-256
+8. **Lifecycle**: Lifecycle policies manage storage costs
+9. **Log**: All operations logged to centralized logging
+10. **Monitor**: Metrics tracked for performance and errors
+11. **Alert**: Alerts triggered on thresholds
+
+## Key Benefits
+
+✅ **Security**: Private network, no internet exposure for storage
+✅ **Cost**: FREE private endpoints (AWS), no NAT Gateway needed
+✅ **Scale**: Auto-scaling from 0 to 1000+ concurrent executions
+✅ **Reliability**: Multi-AZ deployment, automatic failover
+✅ **Observability**: Comprehensive logging and monitoring
+
+## Cost Comparison (Monthly for 1K transfers)
+
+| Cloud | Compute | Storage | Network | Secrets | Logs | **Total** |
+|-------|---------|---------|---------|---------|------|-----------|
+| AWS   | $0.25   | $2.30   | **$0.00** | $0.40 | $0.50 | **$3.45** |
+| GCP   | $0.40   | $2.00   | **$0.00** | $0.06 | $0.00 | **$2.46** |
+| Azure | $0.20   | $2.05   | $7.20   | $0.03 | $2.30 | **$11.78** |
+
+**Winner**: GCP (most cost-effective) | **Best Features**: AWS (FREE S3 endpoint)

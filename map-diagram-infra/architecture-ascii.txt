@@ -1,0 +1,279 @@
+┌────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                        UNIVERSAL MULTI-CLOUD ARCHITECTURE                                          │
+│                    Secure File Transfer: SFTP to Object Storage                                    │
+│                              AWS | GCP | Azure                                                     │
+└────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                    EXTERNAL SYSTEMS                                                │
+│                                                                                                    │
+│  ┌─────────────────────────┐                    ┌────────────────────────────────────┐            │
+│  │  Legacy SFTP Server     │                    │      Scheduler/Trigger             │            │
+│  │                         │                    │  AWS: EventBridge                  │            │
+│  │  Protocol: SSH/SFTP     │                    │  GCP: Cloud Scheduler              │            │
+│  │  Port: 22               │                    │  Azure: Logic Apps / Timer         │            │
+│  │  Location: On-Premise   │                    │                                    │            │
+│  └─────────────────────────┘                    └────────────────────────────────────┘            │
+│             │                                                    │                                 │
+└─────────────┼────────────────────────────────────────────────────┼─────────────────────────────────┘
+              │                                                    │
+              │ Port 22 (SSH)                                      │ Triggers
+              │                                                    │
+┌─────────────▼────────────────────────────────────────────────────▼─────────────────────────────────┐
+│                              CLOUD PLATFORM (AWS / GCP / Azure)                                    │
+│                                                                                                    │
+│  ┌──────────────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │                         VIRTUAL PRIVATE NETWORK                                              │ │
+│  │                   AWS: VPC | GCP: VPC | Azure: VNet                                          │ │
+│  │                          CIDR: 10.0.0.0/16                                                   │ │
+│  │                                                                                              │ │
+│  │  ┌──────────────────────────────────────┐    ┌──────────────────────────────────────┐      │ │
+│  │  │  PRIVATE SUBNET - AZ/ZONE 1          │    │  PRIVATE SUBNET - AZ/ZONE 2          │      │ │
+│  │  │  CIDR: 10.0.1.0/24                   │    │  CIDR: 10.0.2.0/24                   │      │ │
+│  │  │                                      │    │                                      │      │ │
+│  │  │  ┌────────────────────────────────┐  │    │  ┌────────────────────────────────┐  │      │ │
+│  │  │  │ SERVERLESS FUNCTION - Instance 1│ │    │  │ SERVERLESS FUNCTION - Instance 2│ │      │ │
+│  │  │  │                                │  │    │  │                                │  │      │ │
+│  │  │  │ AWS:   Lambda                  │  │    │  │ AWS:   Lambda                  │  │      │ │
+│  │  │  │ GCP:   Cloud Functions (2nd gen)│ │    │  │ GCP:   Cloud Functions (2nd gen)│ │      │ │
+│  │  │  │ Azure: Azure Functions         │  │    │  │ Azure: Azure Functions         │  │      │ │
+│  │  │  │                                │  │    │  │                                │  │      │ │
+│  │  │  │ Runtime:  Python 3.11          │  │    │  │ Runtime:  Python 3.11          │  │      │ │
+│  │  │  │ Memory:   512 MB               │  │    │  │ Memory:   512 MB               │  │      │ │
+│  │  │  │ Timeout:  300 seconds          │  │    │  │ Timeout:  300 seconds          │  │      │ │
+│  │  │  │                                │  │    │  │                                │  │      │ │
+│  │  │  │ Capabilities:                  │  │    │  │ Capabilities:                  │  │      │ │
+│  │  │  │ • Connect to SFTP              │  │    │  │ • Connect to SFTP              │  │      │ │
+│  │  │  │ • Download files               │  │    │  │ • Download files               │  │      │ │
+│  │  │  │ • Upload to storage            │  │    │  │ • Upload to storage            │  │      │ │
+│  │  │  │ • Error handling & retry       │  │    │  │ • Error handling & retry       │  │      │ │
+│  │  │  │ • Centralized logging          │  │    │  │ • Centralized logging          │  │      │ │
+│  │  │  └──────────┬────────────┬────────┘  │    │  └──────────┬────────────┬────────┘  │      │ │
+│  │  │             │            │            │    │             │            │            │      │ │
+│  │  └─────────────┼────────────┼────────────┘    └─────────────┼────────────┼────────────┘      │ │
+│  │                │            │                               │            │                   │ │
+│  │                │            │                               │            │                   │ │
+│  │  ┌─────────────▼────────────▼───────────────────────────────▼────────────▼────────────────┐ │ │
+│  │  │                        NETWORK SECURITY                                                 │ │ │
+│  │  │          AWS: Security Group | GCP: Firewall Rules | Azure: NSG                         │ │ │
+│  │  │                                                                                          │ │ │
+│  │  │  Egress Rules:                                                                           │ │ │
+│  │  │  • Port 443 (HTTPS) → Private Service Endpoint (to Object Storage)                      │ │ │
+│  │  │  • Port 22  (SSH)   → SFTP Server (Internet)                                            │ │ │
+│  │  │                                                                                          │ │ │
+│  │  │  Ingress Rules: None (Private Subnet)                                                   │ │ │
+│  │  └──────────────┬──────────────────────────────────┬────────────────────────────────────────┘ │ │
+│  │                 │                                  │                                          │ │
+│  │                 │ Port 443 (HTTPS)                 │ Port 22 (SSH)                            │ │
+│  │                 │ Private Connection               │ Internet                                 │ │
+│  │                 │                                  └──────────────────────────────────────────┼─┼─┐
+│  │  ┌──────────────▼─────────────────────────────────────────────────────────────────────────┐ │ │ │
+│  │  │              PRIVATE SERVICE ENDPOINT                                                  │ │ │ │
+│  │  │                                                                                         │ │ │ │
+│  │  │  AWS:   VPC Gateway Endpoint (S3)           - Cost: FREE                               │ │ │ │
+│  │  │  GCP:   Private Service Connect             - Cost: FREE (Private Google Access)       │ │ │ │
+│  │  │  Azure: Private Endpoint                    - Cost: $7.20/month                        │ │ │ │
+│  │  │                                                                                         │ │ │ │
+│  │  │  Purpose: Enable private connectivity to Object Storage without internet exposure      │ │ │ │
+│  │  │  Benefit: Traffic stays within cloud provider's network backbone                       │ │ │ │
+│  │  └──────────────┬──────────────────────────────────────────────────────────────────────────┘ │ │ │
+│  │                 │                                                                             │ │ │
+│  │  ┌──────────────▼───────────────────────────────────────┐                                   │ │ │
+│  │  │            ROUTE TABLE                               │                                   │ │ │
+│  │  │  Routes traffic from subnets to endpoints            │                                   │ │ │
+│  │  └──────────────────────────────────────────────────────┘                                   │ │ │
+│  │                                                                                              │ │ │
+│  └──────────────────────────────────────────────────────────────────────────────────────────────┘ │ │
+│                                                                                                    │ │
+│                                  │ Private Connection (No Internet)                               │ │
+│                                  │                                                                │ │
+│  ┌───────────────────────────────▼──────────────────────────────────────────────────────────────┐ │ │
+│  │                             OBJECT STORAGE SERVICE                                            │ │ │
+│  │              AWS: S3 | GCP: Cloud Storage | Azure: Blob Storage                              │ │ │
+│  │                                                                                               │ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────────────────────────┐   │ │ │
+│  │  │  Storage Bucket/Container                                                            │   │ │ │
+│  │  │                                                                                       │   │ │ │
+│  │  │  Features:                                                                            │   │ │ │
+│  │  │  ✓ Versioning: Enabled (data protection)                                             │   │ │ │
+│  │  │  ✓ Encryption at Rest: AES-256 (SSE-S3 / CMEK / SSE)                                 │   │ │ │
+│  │  │  ✓ Encryption in Transit: TLS/HTTPS                                                  │   │ │ │
+│  │  │  ✓ Public Access: Blocked                                                            │   │ │ │
+│  │  │  ✓ Access Logging: Enabled                                                           │   │ │ │
+│  │  │  ✓ Replication: Multi-AZ/Multi-Zone                                                  │   │ │ │
+│  │  └──────────────────────────────────────────────────────────────────────────────────────┘   │ │ │
+│  │                                                                                               │ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────────────────────────┐   │ │ │
+│  │  │  Lifecycle Policies (Cost Optimization)                                              │   │ │ │
+│  │  │                                                                                       │   │ │ │
+│  │  │  Day   0-30:  Standard / Hot Storage              (Full cost)                        │   │ │ │
+│  │  │  Day  30-90:  Infrequent Access / Cool Storage    (46% savings)                      │   │ │ │
+│  │  │  Day  90-180: Glacier / Archive Storage           (83% savings)                      │   │ │ │
+│  │  │  Day 180+:    Deep Archive / Cold Storage         (96% savings)                      │   │ │ │
+│  │  └──────────────────────────────────────────────────────────────────────────────────────┘   │ │ │
+│  └───────────────────────────────────────────────────────────────────────────────────────────────┘ │ │
+│                                                                                                    │ │
+│  ┌──────────────────────────────────────────────────────────────────────────────────────────────┐ │ │
+│  │                          SECURITY & IDENTITY MANAGEMENT                                       │ │ │
+│  │                                                                                               │ │ │
+│  │  ┌─────────────────────────────────────────┐  ┌────────────────────────────────────────────┐ │ │ │
+│  │  │  Identity & Access Management           │  │  Secret Management Service                 │ │ │ │
+│  │  │                                         │  │                                            │ │ │ │
+│  │  │  AWS:   IAM Role + Policies             │  │  AWS:   Secrets Manager ($0.40/secret)     │ │ │ │
+│  │  │  GCP:   Service Account + IAM           │  │  GCP:   Secret Manager ($0.06/secret)      │ │ │ │
+│  │  │  Azure: Managed Identity + RBAC         │  │  Azure: Key Vault ($0.03/secret)           │ │ │ │
+│  │  │                                         │  │                                            │ │ │ │
+│  │  │  Permissions (Least Privilege):         │  │  Stores (Encrypted):                       │ │ │ │
+│  │  │  • storage:PutObject                    │  │  • SFTP Username                           │ │ │ │
+│  │  │  • storage:ListBucket                   │  │  • SFTP Password                           │ │ │ │
+│  │  │  • secrets:GetSecretValue               │  │  • SFTP Host                               │ │ │ │
+│  │  │  • logs:CreateLogStream                 │  │  • SFTP Port                               │ │ │ │
+│  │  │  • logs:PutLogEvents                    │  │                                            │ │ │ │
+│  │  │  • ec2:CreateNetworkInterface (VPC)     │  │  Features:                                 │ │ │ │
+│  │  │                                         │  │  • Automatic rotation support              │ │ │ │
+│  │  │  Attached to: Serverless Functions      │  │  • Version management                      │ │ │ │
+│  │  └─────────────────────────────────────────┘  │  • Access auditing                         │ │ │ │
+│  │                                                └────────────────────────────────────────────┘ │ │ │
+│  └──────────────────────────────────────────────────────────────────────────────────────────────┘ │ │
+│                                                                                                    │ │
+│  ┌──────────────────────────────────────────────────────────────────────────────────────────────┐ │ │
+│  │                          OBSERVABILITY & MONITORING                                           │ │ │
+│  │                                                                                               │ │ │
+│  │  ┌─────────────────────────┐  ┌──────────────────────┐  ┌───────────────────────────────┐   │ │ │
+│  │  │  Centralized Logging    │  │  Metrics & Monitoring│  │  Alerting                     │   │ │ │
+│  │  │                         │  │                      │  │                               │   │ │ │
+│  │  │  AWS: CloudWatch Logs   │  │  AWS: CloudWatch     │  │  AWS: CloudWatch Alarms       │   │ │ │
+│  │  │  GCP: Cloud Logging     │  │  GCP: Cloud Monitor  │  │  GCP: Cloud Alerting          │   │ │ │
+│  │  │  Azure: App Insights    │  │  Azure: Monitor      │  │  Azure: Action Groups         │   │ │ │
+│  │  │                         │  │                      │  │                               │   │ │ │
+│  │  │  Retention: 7 days      │  │  Tracks:             │  │  Alerts on:                   │   │ │ │
+│  │  │  Format: JSON           │  │  • Invocations       │  │  • Error rate > 5%            │   │ │ │
+│  │  │  Source: All functions  │  │  • Errors            │  │  • Duration > 4 min           │   │ │ │
+│  │  │                         │  │  • Duration          │  │  • SFTP failures              │   │ │ │
+│  │  │  Features:              │  │  • Throttles         │  │  • Storage write failures     │   │ │ │
+│  │  │  • Search & filter      │  │  • Cost              │  │  • Cost anomalies             │   │ │ │
+│  │  │  • Real-time streaming  │  │  • Concurrency       │  │                               │   │ │ │
+│  │  │  • Log insights         │  │                      │  │  Notifications:               │   │ │ │
+│  │  └─────────────────────────┘  └──────────────────────┘  │  • Email, SMS, Slack          │   │ │ │
+│  │                                                          │  • PagerDuty, etc.            │   │ │ │
+│  │                                                          └───────────────────────────────┘   │ │ │
+│  └──────────────────────────────────────────────────────────────────────────────────────────────┘ │ │
+└────────────────────────────────────────────────────────────────────────────────────────────────────┘ │
+                                                                                                       │
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────┘
+│
+│  DATA FLOW (Step-by-Step)
+│  ═════════════════════════
+│
+│  1. Scheduler triggers serverless function (EventBridge/Cloud Scheduler/Logic Apps)
+│  2. Function starts in VPC private subnet
+│  3. Function assumes IAM role/service account/managed identity
+│  4. Function retrieves SFTP credentials from Secret Manager
+│  5. Function connects to SFTP server over internet (port 22, SSH protocol)
+│  6. Function downloads file(s) from SFTP server to function memory
+│  7. Function uploads file(s) to Object Storage via Private Endpoint (port 443, HTTPS)
+│  8. Object Storage encrypts file(s) with AES-256 at rest
+│  9. Lifecycle policies manage storage class transitions for cost optimization
+│ 10. Function logs all operations to centralized logging service
+│ 11. Monitoring service collects metrics (invocations, errors, duration)
+│ 12. If error threshold exceeded, alerting service sends notifications
+│ 13. Function execution completes
+
+
+┌────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                               COST COMPARISON (Monthly)                                            │
+│                         Scenario: 1,000 file transfers, 100MB avg file size                        │
+└────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────┬────────────┬────────────┬────────────┬────────────┬───────────┬───────────────┐
+│ Component        │    AWS     │    GCP     │   Azure    │  Savings   │  Notes                    │
+├──────────────────┼────────────┼────────────┼────────────┼────────────┼───────────────────────────┤
+│ Compute          │   $0.25    │   $0.40    │   $0.20    │ Similar    │ Per 1M requests           │
+│ Storage (100GB)  │   $2.30    │   $2.00    │   $2.05    │ Similar    │ With lifecycle policies   │
+│ Private Endpoint │ **$0.00**  │ **$0.00**  │   $7.20    │ AWS/GCP    │ AWS Gateway FREE!         │
+│ Secrets          │   $0.40    │   $0.06    │   $0.03    │ GCP/Azure  │ Per secret per month      │
+│ Logging          │   $0.50    │ **$0.00**  │   $2.30    │ GCP        │ GCP: 50GB free            │
+├──────────────────┼────────────┼────────────┼────────────┼────────────┼───────────────────────────┤
+│ **TOTAL**        │ **$3.45**  │ **$2.46**  │ **$11.78** │ GCP -29%   │ GCP is cheapest           │
+└──────────────────┴────────────┴────────────┴────────────┴────────────┴───────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                               KEY SAVINGS vs NAT GATEWAY                                           │
+└────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+Traditional Approach (NAT Gateway for S3 access):
+  • NAT Gateway: $32.40/month + $0.045/GB data processed
+  • For 100GB: $32.40 + $4.50 = $36.90/month
+
+This Solution (Private Endpoint):
+  • AWS VPC Gateway Endpoint: $0.00
+  • GCP Private Google Access: $0.00
+  • Azure Private Endpoint: $7.20/month
+
+SAVINGS:
+  • AWS: $36.90 saved (100% savings!)
+  • GCP: $36.90 saved (100% savings!)
+  • Azure: $29.70 saved (80% savings)
+
+
+┌────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                            CLOUD PROVIDER COMPARISON                                               │
+└────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────┬────────────────────────┬───────────────────────┬──────────────────────────┐
+│ Aspect              │ AWS                    │ GCP                   │ Azure                    │
+├─────────────────────┼────────────────────────┼───────────────────────┼──────────────────────────┤
+│ Total Cost          │ $3.45/month            │ $2.46/month (Winner!) │ $11.78/month             │
+│ Private Endpoint    │ FREE (Gateway)         │ FREE (Private Access) │ $7.20/month              │
+│ VPC Integration     │ Excellent (native)     │ Good (VPC Connector)  │ Good (VNet Integration)  │
+│ Cold Start          │ ~1-2s                  │ ~1-2s                 │ ~2-3s                    │
+│ Max Timeout         │ 15 min                 │ 60 min                │ 10 min (Consumption)     │
+│ Free Tier           │ 1M requests/month      │ 2M requests/month     │ 1M requests/month        │
+│ Logging Cost        │ $0.50/GB               │ FREE (50GB)           │ $2.30/GB                 │
+│ Best For            │ AWS ecosystem          │ Cost optimization     │ Microsoft ecosystem      │
+└─────────────────────┴────────────────────────┴───────────────────────┴──────────────────────────┘
+
+
+┌────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                              BENEFITS SUMMARY                                                      │
+└────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+✓ SECURITY:
+  • VPC isolation - no direct internet access for storage
+  • Encryption at rest (AES-256) and in transit (TLS/HTTPS)
+  • Least privilege IAM policies
+  • No hardcoded credentials (Secret Manager)
+  • Audit trail for all operations
+
+✓ COST OPTIMIZATION:
+  • Serverless (pay per execution, no idle costs)
+  • FREE/cheap private endpoints (no NAT Gateway needed)
+  • Storage lifecycle policies (automatic tier transitions)
+  • Right-sized compute resources
+  • 7-day log retention
+
+✓ SCALABILITY:
+  • Auto-scaling from 0 to 1000+ concurrent executions
+  • Unlimited object storage capacity
+  • Multi-AZ/Multi-Zone deployment
+  • No capacity planning required
+
+✓ RELIABILITY:
+  • Multi-AZ deployment (automatic failover)
+  • Retry logic with exponential backoff
+  • Storage versioning (data protection)
+  • Dead letter queue for failed executions
+
+✓ OBSERVABILITY:
+  • Centralized logging (structured JSON)
+  • Real-time metrics and monitoring
+  • Proactive alerting on errors and anomalies
+  • Distributed tracing support
+
+✓ PORTABILITY:
+  • Cloud-agnostic design
+  • Easy migration between AWS/GCP/Azure
+  • Universal component mappings
+  • Infrastructure as Code (Terraform)
+
+End of ASCII Architecture Diagram

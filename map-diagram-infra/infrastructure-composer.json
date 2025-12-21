@@ -1,0 +1,899 @@
+{
+  "metadata": {
+    "name": "Secure File Transfer: SFTP to Cloud Object Storage",
+    "description": "Universal multi-cloud architecture for transferring files from legacy SFTP systems to cloud object storage using serverless functions with private network connectivity",
+    "version": "1.0.0",
+    "author": "DEA-C01 Infrastructure Team",
+    "created": "2025-12-21",
+    "clouds_supported": ["AWS", "GCP", "Azure"],
+    "tags": [
+      "serverless",
+      "file-transfer",
+      "sftp",
+      "object-storage",
+      "vpc",
+      "private-endpoint",
+      "multi-cloud",
+      "cost-optimized",
+      "secure"
+    ]
+  },
+  "architecture": {
+    "pattern": "serverless-vpc-private-storage",
+    "deployment_model": "multi-az",
+    "network_model": "private-subnet-with-gateway-endpoint",
+    "security_model": "zero-trust-least-privilege"
+  },
+  "components": [
+    {
+      "id": "compute-serverless-function",
+      "category": "Compute",
+      "type": "Serverless Function",
+      "purpose": "Execute file transfer logic from SFTP to object storage",
+      "cloud_mappings": {
+        "aws": {
+          "service": "AWS Lambda",
+          "resource_type": "aws_lambda_function",
+          "configuration": {
+            "runtime": "python3.11",
+            "memory": "512 MB",
+            "timeout": "300 seconds",
+            "vpc_enabled": true,
+            "environment_variables": {
+              "S3_BUCKET_NAME": "reference:storage-object-storage",
+              "SFTP_SECRET_ARN": "reference:security-secret-manager",
+              "LOG_LEVEL": "INFO"
+            }
+          },
+          "cost_estimate": "$0.20 per 1M requests"
+        },
+        "gcp": {
+          "service": "Cloud Functions (2nd Generation)",
+          "resource_type": "google_cloudfunctions2_function",
+          "configuration": {
+            "runtime": "python311",
+            "memory": "512 MiB",
+            "timeout": "300s",
+            "vpc_connector": "reference:network-vpc-connector",
+            "environment_variables": {
+              "BUCKET_NAME": "reference:storage-object-storage",
+              "SECRET_ID": "reference:security-secret-manager",
+              "LOG_LEVEL": "INFO"
+            }
+          },
+          "cost_estimate": "$0.40 per 1M requests"
+        },
+        "azure": {
+          "service": "Azure Functions",
+          "resource_type": "azurerm_linux_function_app",
+          "configuration": {
+            "runtime": "python",
+            "runtime_version": "3.11",
+            "memory": "512 MB",
+            "timeout": "300",
+            "vnet_integration": true,
+            "app_settings": {
+              "STORAGE_ACCOUNT_NAME": "reference:storage-object-storage",
+              "KEY_VAULT_URI": "reference:security-secret-manager",
+              "LOG_LEVEL": "INFO"
+            }
+          },
+          "cost_estimate": "$0.20 per 1M requests"
+        }
+      },
+      "dependencies": [
+        "network-vpc",
+        "network-private-subnet",
+        "network-security-group",
+        "security-iam-role",
+        "security-secret-manager",
+        "storage-object-storage"
+      ],
+      "high_availability": {
+        "multi_az": true,
+        "auto_scaling": true,
+        "max_concurrency": 1000
+      }
+    },
+    {
+      "id": "storage-object-storage",
+      "category": "Storage",
+      "type": "Object Storage",
+      "purpose": "Store transferred files with versioning and lifecycle management",
+      "cloud_mappings": {
+        "aws": {
+          "service": "Amazon S3",
+          "resource_type": "aws_s3_bucket",
+          "configuration": {
+            "versioning": true,
+            "encryption": "AES256",
+            "public_access_block": true,
+            "lifecycle_rules": [
+              {
+                "id": "transition-to-ia",
+                "transition_days": 30,
+                "storage_class": "STANDARD_IA"
+              },
+              {
+                "id": "transition-to-glacier",
+                "transition_days": 90,
+                "storage_class": "GLACIER_IR"
+              },
+              {
+                "id": "transition-to-deep-archive",
+                "transition_days": 180,
+                "storage_class": "DEEP_ARCHIVE"
+              }
+            ]
+          },
+          "cost_estimate": "$0.023/GB (Standard), $0.0125/GB (IA), $0.004/GB (Glacier), $0.00099/GB (Deep Archive)"
+        },
+        "gcp": {
+          "service": "Cloud Storage",
+          "resource_type": "google_storage_bucket",
+          "configuration": {
+            "versioning": true,
+            "encryption": "CMEK or Google-managed",
+            "public_access_prevention": "enforced",
+            "lifecycle_rules": [
+              {
+                "age": 30,
+                "storage_class": "NEARLINE"
+              },
+              {
+                "age": 90,
+                "storage_class": "COLDLINE"
+              },
+              {
+                "age": 180,
+                "storage_class": "ARCHIVE"
+              }
+            ]
+          },
+          "cost_estimate": "$0.020/GB (Standard), $0.010/GB (Nearline), $0.004/GB (Coldline), $0.0012/GB (Archive)"
+        },
+        "azure": {
+          "service": "Azure Blob Storage",
+          "resource_type": "azurerm_storage_account",
+          "configuration": {
+            "versioning": true,
+            "encryption": "Microsoft-managed or Customer-managed",
+            "public_access": "disabled",
+            "lifecycle_rules": [
+              {
+                "days_after_modification": 30,
+                "tier_to": "Cool"
+              },
+              {
+                "days_after_modification": 90,
+                "tier_to": "Archive"
+              }
+            ]
+          },
+          "cost_estimate": "$0.0208/GB (Hot), $0.0115/GB (Cool), $0.00099/GB (Archive)"
+        }
+      },
+      "dependencies": [],
+      "features": {
+        "versioning": true,
+        "encryption_at_rest": true,
+        "lifecycle_management": true,
+        "access_logging": true,
+        "replication": "multi-az"
+      }
+    },
+    {
+      "id": "network-vpc",
+      "category": "Network",
+      "type": "Virtual Private Cloud",
+      "purpose": "Isolated network environment for cloud resources",
+      "cloud_mappings": {
+        "aws": {
+          "service": "Amazon VPC",
+          "resource_type": "aws_vpc",
+          "configuration": {
+            "cidr_block": "10.0.0.0/16",
+            "enable_dns_hostnames": true,
+            "enable_dns_support": true
+          },
+          "cost_estimate": "$0 (no charge for VPC)"
+        },
+        "gcp": {
+          "service": "Virtual Private Cloud",
+          "resource_type": "google_compute_network",
+          "configuration": {
+            "auto_create_subnetworks": false,
+            "routing_mode": "REGIONAL"
+          },
+          "cost_estimate": "$0 (no charge for VPC)"
+        },
+        "azure": {
+          "service": "Virtual Network (VNet)",
+          "resource_type": "azurerm_virtual_network",
+          "configuration": {
+            "address_space": ["10.0.0.0/16"]
+          },
+          "cost_estimate": "$0 (no charge for VNet)"
+        }
+      },
+      "dependencies": []
+    },
+    {
+      "id": "network-private-subnet",
+      "category": "Network",
+      "type": "Private Subnet",
+      "purpose": "Isolated subnet for serverless functions (no direct internet access)",
+      "cloud_mappings": {
+        "aws": {
+          "service": "VPC Subnet",
+          "resource_type": "aws_subnet",
+          "configuration": {
+            "cidr_blocks": ["10.0.1.0/24", "10.0.2.0/24"],
+            "availability_zones": ["us-east-1a", "us-east-1b"],
+            "map_public_ip_on_launch": false
+          },
+          "cost_estimate": "$0 (no charge for subnets)"
+        },
+        "gcp": {
+          "service": "VPC Subnetwork",
+          "resource_type": "google_compute_subnetwork",
+          "configuration": {
+            "ip_cidr_range": "10.0.1.0/24",
+            "region": "us-central1",
+            "private_ip_google_access": true
+          },
+          "cost_estimate": "$0 (no charge for subnets)"
+        },
+        "azure": {
+          "service": "Virtual Network Subnet",
+          "resource_type": "azurerm_subnet",
+          "configuration": {
+            "address_prefixes": ["10.0.1.0/24"],
+            "service_delegation": "Microsoft.Web/serverFarms"
+          },
+          "cost_estimate": "$0 (no charge for subnets)"
+        }
+      },
+      "dependencies": ["network-vpc"]
+    },
+    {
+      "id": "network-private-endpoint",
+      "category": "Network",
+      "type": "Private Service Endpoint",
+      "purpose": "Private connectivity from VPC to object storage without internet exposure",
+      "cloud_mappings": {
+        "aws": {
+          "service": "VPC Gateway Endpoint",
+          "resource_type": "aws_vpc_endpoint",
+          "configuration": {
+            "service_name": "com.amazonaws.region.s3",
+            "vpc_endpoint_type": "Gateway",
+            "route_table_ids": ["reference:network-route-table"]
+          },
+          "cost_estimate": "$0.00 (FREE for S3 Gateway Endpoint)",
+          "notes": "No hourly charges, no data processing charges - MAJOR COST SAVINGS"
+        },
+        "gcp": {
+          "service": "Private Google Access",
+          "resource_type": "google_compute_subnetwork",
+          "configuration": {
+            "private_ip_google_access": true
+          },
+          "cost_estimate": "$0.00 (FREE when enabled on subnet)",
+          "notes": "Enables private connectivity to Google APIs"
+        },
+        "azure": {
+          "service": "Private Endpoint",
+          "resource_type": "azurerm_private_endpoint",
+          "configuration": {
+            "subresource_names": ["blob"],
+            "private_connection_resource_id": "reference:storage-object-storage"
+          },
+          "cost_estimate": "$7.20/month ($0.01/hour)",
+          "notes": "Charges apply for private endpoint"
+        }
+      },
+      "dependencies": ["network-vpc", "network-private-subnet", "storage-object-storage"],
+      "benefits": {
+        "cost_savings_vs_nat_gateway": "$32-48/month",
+        "security": "Traffic never leaves cloud backbone",
+        "latency": "Lower latency than internet routing",
+        "compliance": "Better compliance posture"
+      }
+    },
+    {
+      "id": "network-security-group",
+      "category": "Network",
+      "type": "Firewall / Security Group",
+      "purpose": "Control ingress and egress traffic for serverless functions",
+      "cloud_mappings": {
+        "aws": {
+          "service": "Security Group",
+          "resource_type": "aws_security_group",
+          "configuration": {
+            "egress_rules": [
+              {
+                "from_port": 443,
+                "to_port": 443,
+                "protocol": "tcp",
+                "cidr_blocks": ["0.0.0.0/0"],
+                "description": "HTTPS to S3 via Gateway Endpoint"
+              },
+              {
+                "from_port": 22,
+                "to_port": 22,
+                "protocol": "tcp",
+                "cidr_blocks": ["0.0.0.0/0"],
+                "description": "SSH/SFTP to legacy server"
+              }
+            ],
+            "ingress_rules": []
+          },
+          "cost_estimate": "$0 (no charge for security groups)"
+        },
+        "gcp": {
+          "service": "VPC Firewall Rules",
+          "resource_type": "google_compute_firewall",
+          "configuration": {
+            "direction": "EGRESS",
+            "allow": [
+              {"protocol": "tcp", "ports": ["443"]},
+              {"protocol": "tcp", "ports": ["22"]}
+            ],
+            "destination_ranges": ["0.0.0.0/0"]
+          },
+          "cost_estimate": "$0 (no charge for firewall rules)"
+        },
+        "azure": {
+          "service": "Network Security Group (NSG)",
+          "resource_type": "azurerm_network_security_group",
+          "configuration": {
+            "security_rules": [
+              {
+                "name": "allow-https-outbound",
+                "priority": 100,
+                "direction": "Outbound",
+                "access": "Allow",
+                "protocol": "Tcp",
+                "destination_port_range": "443"
+              },
+              {
+                "name": "allow-ssh-outbound",
+                "priority": 110,
+                "direction": "Outbound",
+                "access": "Allow",
+                "protocol": "Tcp",
+                "destination_port_range": "22"
+              }
+            ]
+          },
+          "cost_estimate": "$0 (no charge for NSGs)"
+        }
+      },
+      "dependencies": ["network-vpc"]
+    },
+    {
+      "id": "network-route-table",
+      "category": "Network",
+      "type": "Route Table",
+      "purpose": "Control network routing from subnets to endpoints",
+      "cloud_mappings": {
+        "aws": {
+          "service": "Route Table",
+          "resource_type": "aws_route_table",
+          "configuration": {
+            "routes": [
+              {
+                "destination": "0.0.0.0/0",
+                "gateway": "reference:network-private-endpoint"
+              }
+            ]
+          },
+          "cost_estimate": "$0 (no charge for route tables)"
+        },
+        "gcp": {
+          "service": "Routes",
+          "resource_type": "google_compute_route",
+          "configuration": {
+            "next_hop": "default-internet-gateway",
+            "priority": 1000
+          },
+          "cost_estimate": "$0 (no charge for routes)"
+        },
+        "azure": {
+          "service": "Route Table",
+          "resource_type": "azurerm_route_table",
+          "configuration": {
+            "routes": [
+              {
+                "address_prefix": "0.0.0.0/0",
+                "next_hop_type": "VirtualNetworkServiceEndpoint"
+              }
+            ]
+          },
+          "cost_estimate": "$0 (no charge for route tables)"
+        }
+      },
+      "dependencies": ["network-vpc", "network-private-subnet"]
+    },
+    {
+      "id": "security-iam-role",
+      "category": "Security",
+      "type": "Identity & Access Management",
+      "purpose": "Grant serverless function minimal required permissions (least privilege)",
+      "cloud_mappings": {
+        "aws": {
+          "service": "IAM Role + Policies",
+          "resource_type": "aws_iam_role",
+          "configuration": {
+            "assume_role_policy": "lambda.amazonaws.com",
+            "policies": [
+              {
+                "name": "s3-access",
+                "actions": ["s3:PutObject", "s3:PutObjectAcl", "s3:ListBucket"],
+                "resources": ["reference:storage-object-storage"]
+              },
+              {
+                "name": "secrets-access",
+                "actions": ["secretsmanager:GetSecretValue"],
+                "resources": ["reference:security-secret-manager"]
+              },
+              {
+                "name": "logs-access",
+                "actions": ["logs:CreateLogStream", "logs:PutLogEvents"],
+                "resources": ["reference:observability-logging"]
+              },
+              {
+                "name": "vpc-access",
+                "actions": ["ec2:CreateNetworkInterface", "ec2:DescribeNetworkInterfaces", "ec2:DeleteNetworkInterface"],
+                "resources": ["*"]
+              }
+            ]
+          },
+          "cost_estimate": "$0 (no charge for IAM)"
+        },
+        "gcp": {
+          "service": "Service Account + IAM Bindings",
+          "resource_type": "google_service_account",
+          "configuration": {
+            "roles": [
+              {"role": "roles/storage.objectAdmin", "resource": "reference:storage-object-storage"},
+              {"role": "roles/secretmanager.secretAccessor", "resource": "reference:security-secret-manager"},
+              {"role": "roles/logging.logWriter", "resource": "project"}
+            ]
+          },
+          "cost_estimate": "$0 (no charge for service accounts)"
+        },
+        "azure": {
+          "service": "Managed Identity + Role Assignments",
+          "resource_type": "azurerm_user_assigned_identity",
+          "configuration": {
+            "role_assignments": [
+              {"role": "Storage Blob Data Contributor", "scope": "reference:storage-object-storage"},
+              {"role": "Key Vault Secrets User", "scope": "reference:security-secret-manager"},
+              {"role": "Monitoring Metrics Publisher", "scope": "subscription"}
+            ]
+          },
+          "cost_estimate": "$0 (no charge for managed identities)"
+        }
+      },
+      "dependencies": [],
+      "principle": "least-privilege"
+    },
+    {
+      "id": "security-secret-manager",
+      "category": "Security",
+      "type": "Secret Management",
+      "purpose": "Securely store and retrieve SFTP credentials",
+      "cloud_mappings": {
+        "aws": {
+          "service": "AWS Secrets Manager",
+          "resource_type": "aws_secretsmanager_secret",
+          "configuration": {
+            "secret_string": {
+              "username": "${sftp_username}",
+              "password": "${sftp_password}",
+              "host": "${sftp_host}",
+              "port": "${sftp_port}"
+            },
+            "recovery_window_in_days": 7,
+            "rotation": "supported"
+          },
+          "cost_estimate": "$0.40 per secret per month"
+        },
+        "gcp": {
+          "service": "Secret Manager",
+          "resource_type": "google_secret_manager_secret",
+          "configuration": {
+            "secret_data": {
+              "username": "${sftp_username}",
+              "password": "${sftp_password}",
+              "host": "${sftp_host}",
+              "port": "${sftp_port}"
+            },
+            "replication": "automatic"
+          },
+          "cost_estimate": "$0.06 per secret per month"
+        },
+        "azure": {
+          "service": "Azure Key Vault",
+          "resource_type": "azurerm_key_vault_secret",
+          "configuration": {
+            "value": {
+              "username": "${sftp_username}",
+              "password": "${sftp_password}",
+              "host": "${sftp_host}",
+              "port": "${sftp_port}"
+            },
+            "content_type": "application/json"
+          },
+          "cost_estimate": "$0.03 per secret per month"
+        }
+      },
+      "dependencies": [],
+      "features": {
+        "encryption": true,
+        "rotation": true,
+        "versioning": true,
+        "access_auditing": true
+      }
+    },
+    {
+      "id": "observability-logging",
+      "category": "Observability",
+      "type": "Centralized Logging",
+      "purpose": "Collect and store logs from all components",
+      "cloud_mappings": {
+        "aws": {
+          "service": "CloudWatch Logs",
+          "resource_type": "aws_cloudwatch_log_group",
+          "configuration": {
+            "log_group_name": "/aws/lambda/file-transfer",
+            "retention_in_days": 7
+          },
+          "cost_estimate": "$0.50 per GB ingested"
+        },
+        "gcp": {
+          "service": "Cloud Logging",
+          "resource_type": "google_logging_project_sink",
+          "configuration": {
+            "filter": "resource.type=cloud_function",
+            "destination": "storage.googleapis.com/logs-bucket"
+          },
+          "cost_estimate": "$0.00 (first 50GB free per month)"
+        },
+        "azure": {
+          "service": "Application Insights",
+          "resource_type": "azurerm_application_insights",
+          "configuration": {
+            "application_type": "web",
+            "retention_in_days": 30
+          },
+          "cost_estimate": "$2.30 per GB ingested"
+        }
+      },
+      "dependencies": []
+    },
+    {
+      "id": "observability-monitoring",
+      "category": "Observability",
+      "type": "Metrics & Monitoring",
+      "purpose": "Track performance metrics and resource utilization",
+      "cloud_mappings": {
+        "aws": {
+          "service": "CloudWatch Metrics",
+          "resource_type": "aws_cloudwatch_metric",
+          "configuration": {
+            "namespace": "AWS/Lambda",
+            "metrics": ["Invocations", "Errors", "Duration", "Throttles", "ConcurrentExecutions"]
+          },
+          "cost_estimate": "$0 (basic metrics are free)"
+        },
+        "gcp": {
+          "service": "Cloud Monitoring",
+          "resource_type": "google_monitoring_metric",
+          "configuration": {
+            "metric_type": "cloudfunctions.googleapis.com/function",
+            "metrics": ["execution_count", "execution_times", "user_memory_bytes"]
+          },
+          "cost_estimate": "$0 (basic metrics are free)"
+        },
+        "azure": {
+          "service": "Azure Monitor",
+          "resource_type": "azurerm_monitor_metric",
+          "configuration": {
+            "namespace": "Microsoft.Web/sites",
+            "metrics": ["FunctionExecutionCount", "FunctionExecutionUnits", "Http5xx"]
+          },
+          "cost_estimate": "$0 (basic metrics are free)"
+        }
+      },
+      "dependencies": []
+    },
+    {
+      "id": "observability-alerting",
+      "category": "Observability",
+      "type": "Alerting",
+      "purpose": "Send notifications on errors and anomalies",
+      "cloud_mappings": {
+        "aws": {
+          "service": "CloudWatch Alarms",
+          "resource_type": "aws_cloudwatch_metric_alarm",
+          "configuration": {
+            "alarm_conditions": [
+              {"metric": "Errors", "threshold": 5, "comparison": "GreaterThanThreshold"},
+              {"metric": "Duration", "threshold": 240000, "comparison": "GreaterThanThreshold"}
+            ],
+            "actions": ["reference:sns-topic"]
+          },
+          "cost_estimate": "$0.10 per alarm per month"
+        },
+        "gcp": {
+          "service": "Cloud Alerting",
+          "resource_type": "google_monitoring_alert_policy",
+          "configuration": {
+            "conditions": [
+              {"metric": "execution_count", "filter": "status=error", "threshold": 5},
+              {"metric": "execution_times", "threshold": 240000}
+            ],
+            "notification_channels": ["reference:notification-channel"]
+          },
+          "cost_estimate": "$0 (no charge for alerting policies)"
+        },
+        "azure": {
+          "service": "Azure Monitor Action Groups",
+          "resource_type": "azurerm_monitor_action_group",
+          "configuration": {
+            "alert_rules": [
+              {"metric": "Http5xx", "threshold": 5, "aggregation": "Total"},
+              {"metric": "FunctionExecutionUnits", "threshold": 240000}
+            ],
+            "actions": ["email", "sms", "webhook"]
+          },
+          "cost_estimate": "$0 (no charge for action groups)"
+        }
+      },
+      "dependencies": ["observability-monitoring"]
+    },
+    {
+      "id": "automation-scheduler",
+      "category": "Automation",
+      "type": "Scheduler",
+      "purpose": "Trigger serverless function on recurring schedule",
+      "cloud_mappings": {
+        "aws": {
+          "service": "EventBridge (CloudWatch Events)",
+          "resource_type": "aws_cloudwatch_event_rule",
+          "configuration": {
+            "schedule_expression": "rate(1 hour)",
+            "target": "reference:compute-serverless-function"
+          },
+          "cost_estimate": "$0 (first 1M events free, then $1.00 per million)"
+        },
+        "gcp": {
+          "service": "Cloud Scheduler",
+          "resource_type": "google_cloud_scheduler_job",
+          "configuration": {
+            "schedule": "0 * * * *",
+            "time_zone": "UTC",
+            "http_target": "reference:compute-serverless-function"
+          },
+          "cost_estimate": "$0.10 per job per month"
+        },
+        "azure": {
+          "service": "Logic Apps / Timer Trigger",
+          "resource_type": "azurerm_logic_app_workflow",
+          "configuration": {
+            "recurrence": {
+              "frequency": "Hour",
+              "interval": 1
+            },
+            "actions": ["invoke_function"]
+          },
+          "cost_estimate": "$0 (first 4,000 executions free)"
+        }
+      },
+      "dependencies": ["compute-serverless-function"]
+    }
+  ],
+  "data_flow": {
+    "steps": [
+      {
+        "step": 1,
+        "action": "Scheduler triggers serverless function",
+        "components": ["automation-scheduler", "compute-serverless-function"]
+      },
+      {
+        "step": 2,
+        "action": "Function assumes IAM role/identity",
+        "components": ["compute-serverless-function", "security-iam-role"]
+      },
+      {
+        "step": 3,
+        "action": "Function retrieves SFTP credentials",
+        "components": ["compute-serverless-function", "security-secret-manager"]
+      },
+      {
+        "step": 4,
+        "action": "Function connects to SFTP server (port 22)",
+        "components": ["compute-serverless-function", "network-security-group"],
+        "protocol": "SSH/SFTP",
+        "port": 22
+      },
+      {
+        "step": 5,
+        "action": "Function downloads file(s) from SFTP",
+        "components": ["compute-serverless-function"]
+      },
+      {
+        "step": 6,
+        "action": "Function uploads to storage via private endpoint",
+        "components": ["compute-serverless-function", "network-private-endpoint", "storage-object-storage"],
+        "protocol": "HTTPS",
+        "port": 443
+      },
+      {
+        "step": 7,
+        "action": "Storage encrypts file(s) at rest",
+        "components": ["storage-object-storage"],
+        "encryption": "AES-256"
+      },
+      {
+        "step": 8,
+        "action": "Lifecycle policies manage storage tiers",
+        "components": ["storage-object-storage"]
+      },
+      {
+        "step": 9,
+        "action": "Function logs all operations",
+        "components": ["compute-serverless-function", "observability-logging"]
+      },
+      {
+        "step": 10,
+        "action": "Monitoring collects metrics",
+        "components": ["observability-monitoring"]
+      },
+      {
+        "step": 11,
+        "action": "Alerting triggers on thresholds",
+        "components": ["observability-alerting"]
+      }
+    ]
+  },
+  "cost_estimate": {
+    "scenario": "1,000 file transfers per month, 100MB average file size, 30s execution time",
+    "breakdown": {
+      "aws": {
+        "compute": {"amount": 0.25, "unit": "USD"},
+        "storage": {"amount": 2.30, "unit": "USD"},
+        "network": {"amount": 0.00, "unit": "USD", "note": "FREE Gateway Endpoint"},
+        "secrets": {"amount": 0.40, "unit": "USD"},
+        "logging": {"amount": 0.50, "unit": "USD"},
+        "total": {"amount": 3.45, "unit": "USD"}
+      },
+      "gcp": {
+        "compute": {"amount": 0.40, "unit": "USD"},
+        "storage": {"amount": 2.00, "unit": "USD"},
+        "network": {"amount": 0.00, "unit": "USD", "note": "FREE Private Google Access"},
+        "secrets": {"amount": 0.06, "unit": "USD"},
+        "logging": {"amount": 0.00, "unit": "USD", "note": "50GB free tier"},
+        "total": {"amount": 2.46, "unit": "USD"}
+      },
+      "azure": {
+        "compute": {"amount": 0.20, "unit": "USD"},
+        "storage": {"amount": 2.05, "unit": "USD"},
+        "network": {"amount": 7.20, "unit": "USD", "note": "Private Endpoint charges"},
+        "secrets": {"amount": 0.03, "unit": "USD"},
+        "logging": {"amount": 2.30, "unit": "USD"},
+        "total": {"amount": 11.78, "unit": "USD"}
+      }
+    },
+    "winner": "GCP",
+    "savings": {
+      "gcp_vs_aws": "29% cheaper",
+      "gcp_vs_azure": "79% cheaper"
+    },
+    "cost_savings_vs_nat_gateway": {
+      "nat_gateway_cost": 36.90,
+      "private_endpoint_cost": {
+        "aws": 0.00,
+        "gcp": 0.00,
+        "azure": 7.20
+      },
+      "savings": {
+        "aws": "100%",
+        "gcp": "100%",
+        "azure": "80%"
+      }
+    }
+  },
+  "deployment_instructions": {
+    "terraform": {
+      "modules_required": [
+        "network/vpc",
+        "network/private-subnet",
+        "network/private-endpoint",
+        "network/security-group",
+        "compute/serverless-function",
+        "storage/object-storage",
+        "security/iam",
+        "security/secret-manager",
+        "observability/logging",
+        "observability/monitoring",
+        "automation/scheduler"
+      ],
+      "example_usage": "terraform apply -var-file=environments/dev/terraform.tfvars"
+    },
+    "prerequisites": [
+      "Cloud provider account (AWS/GCP/Azure)",
+      "Terraform >= 1.0",
+      "Python >= 3.11",
+      "SFTP server credentials"
+    ],
+    "deployment_steps": [
+      "1. Configure cloud provider credentials",
+      "2. Update Terraform variables",
+      "3. Initialize Terraform: terraform init",
+      "4. Plan deployment: terraform plan",
+      "5. Apply infrastructure: terraform apply",
+      "6. Update secrets with SFTP credentials",
+      "7. Test function execution",
+      "8. Monitor logs and metrics"
+    ]
+  },
+  "benefits": {
+    "security": [
+      "VPC isolation - no direct internet access for storage",
+      "Encryption at rest (AES-256) and in transit (TLS/HTTPS)",
+      "Least privilege IAM policies",
+      "No hardcoded credentials",
+      "Audit trail for all operations"
+    ],
+    "cost_optimization": [
+      "Serverless (pay per execution, no idle costs)",
+      "FREE/cheap private endpoints (no NAT Gateway)",
+      "Storage lifecycle policies",
+      "Right-sized compute resources",
+      "Short log retention (7 days)"
+    ],
+    "scalability": [
+      "Auto-scaling from 0 to 1000+ executions",
+      "Unlimited object storage capacity",
+      "Multi-AZ deployment",
+      "No capacity planning"
+    ],
+    "reliability": [
+      "Multi-AZ deployment (automatic failover)",
+      "Retry logic with exponential backoff",
+      "Storage versioning",
+      "Comprehensive error handling"
+    ],
+    "observability": [
+      "Centralized logging (structured JSON)",
+      "Real-time metrics",
+      "Proactive alerting",
+      "Distributed tracing support"
+    ],
+    "portability": [
+      "Cloud-agnostic design",
+      "Easy migration between providers",
+      "Universal component mappings",
+      "Infrastructure as Code"
+    ]
+  },
+  "references": {
+    "documentation": [
+      "UNIVERSAL-ARCHITECTURE.md",
+      "COMPONENT-MAPPING.md",
+      "architecture.mermaid",
+      "architecture.plantuml",
+      "architecture-ascii.txt"
+    ],
+    "related_patterns": [
+      "Serverless data processing",
+      "ETL pipelines",
+      "Event-driven architecture",
+      "Multi-cloud deployment"
+    ]
+  }
+}
