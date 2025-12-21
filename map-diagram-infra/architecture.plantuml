@@ -126,8 +126,8 @@ legend right
     | Scheduler | EventBridge | Cloud Scheduler | Logic Apps | $0 |
     
     **Total Cost** (1K transfers/month):
-    • AWS: $3.45/month
-    • GCP: $2.46/month (Winner)
+    • AWS:   $3.45/month
+    • GCP:   $2.46/month (Winner)
     • Azure: $11.78/month
 end legend
 
