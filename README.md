@@ -18,6 +18,20 @@ This project provides a **production-ready**, **highly modular**, and **well-doc
 - ✅ **Comprehensive documentation** (architecture, deployment, troubleshooting)
 - ✅ **Utility scripts** (deployment, testing, monitoring)
 - ✅ **Security best practices** (encryption, least privilege, VPC isolation)
+- ✅ **Multi-cloud infrastructure composer** (universal diagrams for AWS, GCP, Azure)
+
+## 🌍 Multi-Cloud Support
+
+This repository now includes comprehensive multi-cloud infrastructure diagrams and documentation:
+
+- **AWS Implementation** - Native implementation using Lambda, S3, and VPC Gateway Endpoint
+- **GCP Equivalent** - Complete mapping to Cloud Functions, Cloud Storage, and Private Google Access
+- **Azure Equivalent** - Full documentation for Azure Functions, Blob Storage, and Service Endpoints
+- **Universal Patterns** - Cloud-agnostic architecture that works across all three providers
+- **Migration Guides** - Step-by-step instructions for moving between cloud platforms
+- **Cost Comparisons** - Detailed cost analysis for each cloud provider
+
+See **[map-diagram-infra/](map-diagram-infra/)** for complete multi-cloud documentation.
 
 ## 📁 Repository Structure
 
@@ -32,6 +46,12 @@ This project provides a **production-ready**, **highly modular**, and **well-doc
 │   │   └── DEPLOYMENT.md
 │   ├── api/                       # API documentation
 │   └── troubleshooting/           # Troubleshooting guides
+│
+├── map-diagram-infra/             # Multi-Cloud Infrastructure Composer
+│   ├── INFRASTRUCTURE-COMPOSER.md # Universal architecture diagrams (AWS/GCP/Azure)
+│   ├── COMPONENT-MAPPING-TABLE.md # Detailed resource equivalency matrix
+│   ├── VISUAL-DIAGRAMS.md         # ASCII architecture diagrams
+│   └── README.md                  # Multi-cloud documentation guide
 │
 ├── terraform/                     # Infrastructure as Code
 │   ├── modules/                   # Reusable Terraform modules
@@ -147,6 +167,7 @@ chmod +x ../../../scripts/deployment/test-lambda.sh
 - **[Architecture Documentation](docs/architecture/ARCHITECTURE.md)** - System design and components
 - **[Deployment Guide](docs/deployment/DEPLOYMENT.md)** - Detailed deployment instructions
 - **[Troubleshooting Guide](docs/troubleshooting/)** - Common issues and solutions
+- **[Multi-Cloud Infrastructure Composer](map-diagram-infra/)** - Universal infrastructure diagrams for AWS, GCP, and Azure
 
 ## 🏗️ Architecture
 
