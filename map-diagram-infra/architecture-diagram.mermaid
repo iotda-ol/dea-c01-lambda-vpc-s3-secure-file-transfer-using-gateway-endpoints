@@ -1,0 +1,394 @@
+```mermaid
+graph TB
+    subgraph Internet["🌐 Internet / Public Network"]
+        SFTP["Legacy SFTP Server<br/>📁 sftp.example.com:22<br/>🔐 Username/Password or SSH Key"]
+    end
+
+    subgraph CloudProvider["☁️ Cloud Provider Environment (AWS / GCP / Azure)"]
+        subgraph VPC["🏢 Virtual Private Network<br/>(VPC / VPC / VNet)<br/>CIDR: 10.0.0.0/16"]
+            
+            subgraph PrivateSubnet1["🔒 Private Subnet 1<br/>10.0.1.0/24 | AZ-A"]
+                Function["⚡ Serverless Function<br/><br/>AWS: Lambda<br/>GCP: Cloud Functions<br/>Azure: Azure Functions<br/><br/>🐍 Python 3.11<br/>💾 512 MB<br/>⏱️ 300s timeout"]
+            end
+            
+            subgraph PrivateSubnet2["🔒 Private Subnet 2<br/>10.0.2.0/24 | AZ-B<br/>(High Availability)"]
+                FunctionHA["⚡ Serverless Function<br/>(HA Instance)"]
+            end
+            
+            RouteTable["🗺️ Route Table<br/><br/>10.0.0.0/16 → Local<br/>Storage → Private Endpoint"]
+            
+            PrivateEndpoint["🔐 Private Service Endpoint<br/><br/>AWS: VPC Gateway Endpoint (FREE)<br/>GCP: Private Service Connect<br/>Azure: Private Link<br/><br/>💰 No NAT Gateway needed<br/>🔒 Traffic stays in cloud network"]
+            
+            SecurityGroup["🛡️ Network Security<br/><br/>Egress Rules:<br/>• TCP/443 → Storage (HTTPS)<br/>• TCP/22 → SFTP Server"]
+        end
+        
+        Storage["💾 Object Storage<br/><br/>AWS: S3 Bucket<br/>GCP: Cloud Storage<br/>Azure: Blob Storage<br/><br/>🔐 Encryption: AES-256<br/>📦 Versioning: Enabled<br/>🚫 Public Access: Blocked<br/><br/>Lifecycle Policies:<br/>Day 30: Infrequent Access<br/>Day 90: Archive<br/>Day 180: Deep Archive"]
+        
+        Secrets["🔑 Secrets Vault<br/><br/>AWS: Secrets Manager<br/>GCP: Secret Manager<br/>Azure: Key Vault<br/><br/>Stores:<br/>• SFTP Host & Port<br/>• Username<br/>• Password/SSH Key"]
+        
+        IAM["👤 Identity & Access<br/><br/>AWS: IAM Role<br/>GCP: Service Account<br/>Azure: Managed Identity<br/><br/>Permissions (Least Privilege):<br/>• Read Secrets<br/>• Write to Storage<br/>• Write Logs"]
+        
+        Logging["📊 Logging & Monitoring<br/><br/>AWS: CloudWatch<br/>GCP: Cloud Logging<br/>Azure: Azure Monitor<br/><br/>• Execution logs<br/>• Error traces<br/>• Performance metrics<br/>Retention: 7-30 days"]
+        
+        Scheduler["⏰ Scheduler<br/><br/>AWS: EventBridge<br/>GCP: Cloud Scheduler<br/>Azure: Logic Apps<br/><br/>Schedule: Daily at 2:00 AM<br/>Triggers: Serverless Function"]
+    end
+
+    %% Connections
+    SFTP -->|"SSH/SFTP<br/>Port 22<br/>🔐 Encrypted"| Function
+    Scheduler -->|"Trigger<br/>cron(0 2 * * *)"| Function
+    Function -->|"1️⃣ Get Credentials"| Secrets
+    Function -->|"2️⃣ HTTPS via Private Endpoint<br/>Port 443"| PrivateEndpoint
+    PrivateEndpoint -->|"3️⃣ Private Connection"| Storage
+    Function -->|"4️⃣ Write Logs"| Logging
+    IAM -.->|"Authorize"| Function
+    SecurityGroup -.->|"Protect"| Function
+    RouteTable -->|"Route Traffic"| PrivateEndpoint
+    PrivateSubnet1 --> RouteTable
+    PrivateSubnet2 --> RouteTable
+    FunctionHA -.->|"Redundancy"| Function
+
+    %% Styling
+    classDef awsStyle fill:#FF9900,stroke:#232F3E,stroke-width:2px,color:#232F3E
+    classDef gcpStyle fill:#4285F4,stroke:#1a73e8,stroke-width:2px,color:#fff
+    classDef azureStyle fill:#0078D4,stroke:#0053a6,stroke-width:2px,color:#fff
+    classDef securityStyle fill:#d63384,stroke:#a71d5d,stroke-width:2px,color:#fff
+    classDef networkStyle fill:#6f42c1,stroke:#563d7c,stroke-width:2px,color:#fff
+    classDef storageStyle fill:#28a745,stroke:#1e7e34,stroke-width:2px,color:#fff
+    
+    class Function,FunctionHA,Scheduler awsStyle
+    class Secrets,IAM securityStyle
+    class VPC,PrivateSubnet1,PrivateSubnet2,PrivateEndpoint,RouteTable,SecurityGroup networkStyle
+    class Storage,Logging storageStyle
+```
+
+---
+
+# Data Flow Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant S as ⏰ Scheduler
+    participant F as ⚡ Function
+    participant V as 🔑 Secrets Vault
+    participant SFTP as 📁 SFTP Server
+    participant PE as 🔐 Private Endpoint
+    participant ST as 💾 Object Storage
+    participant L as 📊 Logging
+
+    Note over S,L: Daily File Transfer Workflow
+    
+    S->>F: 1. Trigger Function (2:00 AM)
+    activate F
+    
+    F->>L: 2. Log: Execution started
+    F->>V: 3. Request SFTP credentials
+    activate V
+    V-->>F: 4. Return encrypted credentials
+    deactivate V
+    
+    F->>SFTP: 5. Establish SSH/SFTP connection
+    activate SFTP
+    SFTP-->>F: 6. Connection established
+    
+    F->>SFTP: 7. List files / Download files
+    SFTP-->>F: 8. Return file data
+    deactivate SFTP
+    
+    F->>L: 9. Log: Files downloaded
+    
+    F->>PE: 10. Upload files via HTTPS
+    activate PE
+    PE->>ST: 11. Store files (private connection)
+    activate ST
+    ST-->>PE: 12. Upload confirmation
+    deactivate ST
+    PE-->>F: 13. Success response
+    deactivate PE
+    
+    F->>L: 14. Log: Transfer completed
+    L-->>F: 15. Logs stored
+    
+    deactivate F
+    
+    Note over ST: Lifecycle policies activate
+    Note over ST: Day 30: → Infrequent Access
+    Note over ST: Day 90: → Archive
+    Note over ST: Day 180: → Deep Archive
+```
+
+---
+
+# Component Architecture Diagram
+
+```mermaid
+graph LR
+    subgraph "Compute Layer"
+        C1[Serverless Function]
+    end
+    
+    subgraph "Network Layer"
+        N1[Virtual Network]
+        N2[Private Subnets]
+        N3[Route Tables]
+        N4[Private Endpoint]
+    end
+    
+    subgraph "Storage Layer"
+        S1[Object Storage]
+        S2[Versioning]
+        S3[Lifecycle Policies]
+    end
+    
+    subgraph "Security Layer"
+        SE1[Secrets Vault]
+        SE2[IAM / RBAC]
+        SE3[Encryption at Rest]
+        SE4[Encryption in Transit]
+        SE5[Network Firewall]
+    end
+    
+    subgraph "Observability Layer"
+        O1[Logging]
+        O2[Metrics]
+        O3[Tracing]
+    end
+    
+    subgraph "Orchestration Layer"
+        OR1[Scheduler]
+        OR2[Event Triggers]
+    end
+    
+    C1 --> N2
+    N2 --> N3
+    N3 --> N4
+    N4 --> S1
+    S1 --> S2
+    S1 --> S3
+    
+    C1 --> SE1
+    C1 --> SE2
+    S1 --> SE3
+    N4 --> SE4
+    N2 --> SE5
+    
+    C1 --> O1
+    C1 --> O2
+    C1 --> O3
+    
+    OR1 --> C1
+    OR2 --> C1
+    
+    classDef compute fill:#FF9900,stroke:#232F3E,stroke-width:2px
+    classDef network fill:#6f42c1,stroke:#563d7c,stroke-width:2px
+    classDef storage fill:#28a745,stroke:#1e7e34,stroke-width:2px
+    classDef security fill:#d63384,stroke:#a71d5d,stroke-width:2px
+    classDef observability fill:#17a2b8,stroke:#117a8b,stroke-width:2px
+    classDef orchestration fill:#ffc107,stroke:#d39e00,stroke-width:2px
+    
+    class C1 compute
+    class N1,N2,N3,N4 network
+    class S1,S2,S3 storage
+    class SE1,SE2,SE3,SE4,SE5 security
+    class O1,O2,O3 observability
+    class OR1,OR2 orchestration
+```
+
+---
+
+# Multi-Cloud Provider Comparison
+
+```mermaid
+graph TB
+    subgraph Architecture["Universal Architecture Pattern"]
+        UC["Serverless Function in VPC<br/>↓<br/>Private Endpoint<br/>↓<br/>Object Storage"]
+    end
+    
+    subgraph AWS["Amazon Web Services (AWS)"]
+        AWS1["Lambda in VPC"]
+        AWS2["VPC Gateway Endpoint<br/>💰 FREE"]
+        AWS3["S3 Bucket"]
+        AWS4["💲 ~$3.45/month"]
+        
+        AWS1 --> AWS2 --> AWS3
+        AWS3 --> AWS4
+    end
+    
+    subgraph GCP["Google Cloud Platform (GCP)"]
+        GCP1["Cloud Functions 2nd Gen"]
+        GCP2["Private Service Connect<br/>💰 Varies"]
+        GCP3["Cloud Storage"]
+        GCP4["💲 ~$2.80/month"]
+        
+        GCP1 --> GCP2 --> GCP3
+        GCP3 --> GCP4
+    end
+    
+    subgraph Azure["Microsoft Azure"]
+        AZ1["Azure Functions"]
+        AZ2["Private Link<br/>💲 $7.20/month"]
+        AZ3["Blob Storage"]
+        AZ4["💲 ~$9.73/month"]
+        
+        AZ1 --> AZ2 --> AZ3
+        AZ3 --> AZ4
+    end
+    
+    Architecture -.-> AWS
+    Architecture -.-> GCP
+    Architecture -.-> Azure
+    
+    classDef awsStyle fill:#FF9900,stroke:#232F3E,stroke-width:3px
+    classDef gcpStyle fill:#4285F4,stroke:#1a73e8,stroke-width:3px
+    classDef azureStyle fill:#0078D4,stroke:#0053a6,stroke-width:3px
+    classDef universalStyle fill:#6c757d,stroke:#495057,stroke-width:3px
+    
+    class AWS1,AWS2,AWS3,AWS4 awsStyle
+    class GCP1,GCP2,GCP3,GCP4 gcpStyle
+    class AZ1,AZ2,AZ3,AZ4 azureStyle
+    class UC universalStyle
+```
+
+---
+
+# Security Architecture (Defense in Depth)
+
+```mermaid
+graph TD
+    subgraph Layer1["Layer 1: Network Isolation"]
+        L1_1["Private Subnets Only"]
+        L1_2["No Public IPs"]
+        L1_3["No Internet Gateway for Storage"]
+    end
+    
+    subgraph Layer2["Layer 2: Firewall Controls"]
+        L2_1["Security Groups / NSGs"]
+        L2_2["Deny All Ingress"]
+        L2_3["Minimal Egress Rules"]
+    end
+    
+    subgraph Layer3["Layer 3: Identity & Access"]
+        L3_1["Least Privilege IAM"]
+        L3_2["Service Accounts"]
+        L3_3["No Long-term Credentials"]
+    end
+    
+    subgraph Layer4["Layer 4: Encryption"]
+        L4_1["TLS/HTTPS in Transit"]
+        L4_2["SSH/SFTP Encryption"]
+        L4_3["AES-256 at Rest"]
+    end
+    
+    subgraph Layer5["Layer 5: Secrets Management"]
+        L5_1["Encrypted Vault"]
+        L5_2["No Hardcoded Credentials"]
+        L5_3["Automatic Rotation"]
+    end
+    
+    subgraph Layer6["Layer 6: Monitoring & Audit"]
+        L6_1["Comprehensive Logging"]
+        L6_2["Access Audit Trails"]
+        L6_3["Anomaly Detection"]
+    end
+    
+    Internet[/"Internet / External Threats"/]
+    
+    Internet --> Layer1
+    Layer1 --> Layer2
+    Layer2 --> Layer3
+    Layer3 --> Layer4
+    Layer4 --> Layer5
+    Layer5 --> Layer6
+    
+    Layer6 --> Core["🔐 Protected Core:<br/>Serverless Function<br/>+<br/>Object Storage"]
+    
+    classDef threatStyle fill:#dc3545,stroke:#bd2130,stroke-width:2px,color:#fff
+    classDef defenseStyle fill:#28a745,stroke:#1e7e34,stroke-width:2px,color:#fff
+    classDef coreStyle fill:#007bff,stroke:#0056b3,stroke-width:3px,color:#fff
+    
+    class Internet threatStyle
+    class L1_1,L1_2,L1_3,L2_1,L2_2,L2_3,L3_1,L3_2,L3_3,L4_1,L4_2,L4_3,L5_1,L5_2,L5_3,L6_1,L6_2,L6_3 defenseStyle
+    class Core coreStyle
+```
+
+---
+
+# Cost Optimization Strategy
+
+```mermaid
+graph TD
+    Start["Traditional Architecture<br/>EC2 + NAT Gateway<br/>💲 $65-100/month"]
+    
+    subgraph Optimizations["Cost Optimization Strategies"]
+        O1["✅ Use Serverless Compute<br/>Pay-per-use, no idle costs<br/>💲 Save $40-60/month"]
+        O2["✅ Private Endpoint<br/>No NAT Gateway needed<br/>💲 Save $32-45/month"]
+        O3["✅ Storage Lifecycle<br/>Auto-tier to cheaper storage<br/>💲 Save 50-80% on storage"]
+        O4["✅ Log Retention<br/>7-30 days only<br/>💲 Save $5-10/month"]
+        O5["✅ Right-sized Resources<br/>512MB function memory<br/>💲 Optimal cost/performance"]
+    end
+    
+    End["Optimized Architecture<br/>Serverless + Private Endpoint<br/>💲 $2.80-9.73/month<br/><br/>💰 90-95% Cost Reduction"]
+    
+    Start --> O1
+    O1 --> O2
+    O2 --> O3
+    O3 --> O4
+    O4 --> O5
+    O5 --> End
+    
+    classDef expensiveStyle fill:#dc3545,stroke:#bd2130,stroke-width:2px,color:#fff
+    classDef optimizedStyle fill:#28a745,stroke:#1e7e34,stroke-width:2px,color:#fff
+    classDef savingsStyle fill:#ffc107,stroke:#d39e00,stroke-width:2px
+    
+    class Start expensiveStyle
+    class End optimizedStyle
+    class O1,O2,O3,O4,O5 savingsStyle
+```
+
+---
+
+# Deployment Flow
+
+```mermaid
+graph LR
+    subgraph Development["Development Phase"]
+        D1["Write Function Code<br/>Python 3.11"]
+        D2["Write IaC<br/>Terraform/Pulumi"]
+        D3["Local Testing<br/>Docker/LocalStack"]
+    end
+    
+    subgraph CICD["CI/CD Pipeline"]
+        C1["Code Repository<br/>Git"]
+        C2["Automated Tests<br/>Unit + Integration"]
+        C3["Security Scanning<br/>SAST/DAST"]
+        C4["Build & Package<br/>Dependencies"]
+    end
+    
+    subgraph Deployment["Cloud Deployment"]
+        DP1["Deploy Infrastructure<br/>terraform apply"]
+        DP2["Deploy Function Code<br/>Upload package"]
+        DP3["Configure Secrets<br/>Store credentials"]
+        DP4["Enable Monitoring<br/>Logs & Alerts"]
+    end
+    
+    subgraph Production["Production"]
+        P1["🚀 Running Service"]
+        P2["📊 Monitor & Alert"]
+        P3["🔄 Auto-scaling"]
+    end
+    
+    D1 --> D2 --> D3
+    D3 --> C1
+    C1 --> C2 --> C3 --> C4
+    C4 --> DP1 --> DP2 --> DP3 --> DP4
+    DP4 --> P1 --> P2 --> P3
+    
+    classDef devStyle fill:#6f42c1,stroke:#563d7c,stroke-width:2px
+    classDef cicdStyle fill:#17a2b8,stroke:#117a8b,stroke-width:2px
+    classDef deployStyle fill:#fd7e14,stroke:#dc6502,stroke-width:2px
+    classDef prodStyle fill:#28a745,stroke:#1e7e34,stroke-width:2px
+    
+    class D1,D2,D3 devStyle
+    class C1,C2,C3,C4 cicdStyle
+    class DP1,DP2,DP3,DP4 deployStyle
+    class P1,P2,P3 prodStyle
+```
