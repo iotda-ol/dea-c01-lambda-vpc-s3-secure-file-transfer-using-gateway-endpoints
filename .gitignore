@@ -1,4 +1,16 @@
 # .gitignore
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfvars
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate.backup
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
 
 # Python
 __pycache__/
@@ -36,6 +48,12 @@ htmlcov/
 *.cover
 .hypothesis/
 report.html
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
 
 # IDE
 .vscode/
@@ -68,3 +86,13 @@ lambda-package.zip
 
 # Docker
 docker-compose.override.yml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Lambda deployment package
+lambda_function.zip
+
+# Logs
+*.log
