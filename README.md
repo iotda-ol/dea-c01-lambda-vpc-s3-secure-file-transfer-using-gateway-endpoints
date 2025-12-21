@@ -13,14 +13,30 @@ This repository demonstrates a secure and cost-effective solution for transferri
 
 This project provides a **production-ready**, **highly modular**, and **well-documented** infrastructure for secure file transfers. It includes:
 
+- ✅ **Universal Infrastructure Composer** (AWS, GCP, Azure support)
 - ✅ **100-step instruction manual** (novice to expert)
 - ✅ **Modular Terraform infrastructure** (6 reusable modules)
 - ✅ **Reusable Python code** (organized into core, handlers, utils)
 - ✅ **Multi-environment support** (dev, staging, prod)
 - ✅ **Multi-cloud architecture map** (AWS, GCP, Azure equivalents)
+- ✅ **Multi-cloud deployment patterns** (complete IaC for all clouds)
 - ✅ **Comprehensive documentation** (architecture, deployment, troubleshooting)
 - ✅ **Utility scripts** (deployment, testing, monitoring)
 - ✅ **Security best practices** (encryption, least privilege, VPC isolation)
+- ✅ **Multi-cloud infrastructure composer** (universal diagrams for AWS, GCP, Azure)
+
+## 🌍 Multi-Cloud Support
+
+This repository now includes comprehensive multi-cloud infrastructure diagrams and documentation:
+
+- **AWS Implementation** - Native implementation using Lambda, S3, and VPC Gateway Endpoint
+- **GCP Equivalent** - Complete mapping to Cloud Functions, Cloud Storage, and Private Google Access
+- **Azure Equivalent** - Full documentation for Azure Functions, Blob Storage, and Service Endpoints
+- **Universal Patterns** - Cloud-agnostic architecture that works across all three providers
+- **Migration Guides** - Step-by-step instructions for moving between cloud platforms
+- **Cost Comparisons** - Detailed cost analysis for each cloud provider
+
+See **[map-diagram-infra/](map-diagram-infra/)** for complete multi-cloud documentation.
 
 ## 📁 Repository Structure
 
@@ -35,6 +51,21 @@ This project provides a **production-ready**, **highly modular**, and **well-doc
 │   │   └── DEPLOYMENT.md
 │   ├── api/                       # API documentation
 │   └── troubleshooting/           # Troubleshooting guides
+│
+├── map-diagram-infra/             # Multi-Cloud Infrastructure Composer
+│   ├── INFRASTRUCTURE-COMPOSER.md # Universal architecture diagrams (AWS/GCP/Azure)
+│   ├── COMPONENT-MAPPING-TABLE.md # Detailed resource equivalency matrix
+│   ├── VISUAL-DIAGRAMS.md         # ASCII architecture diagrams
+│   └── README.md                  # Multi-cloud documentation guide
+├── map-diagram-infra/            # Universal Infrastructure Composer
+│   ├── README.md                  # Overview and navigation
+│   ├── QUICK-REFERENCE.md         # Quick reference guide
+│   ├── VISUAL-INDEX.md            # Visual diagram index
+│   ├── infrastructure-diagram.md  # Mermaid diagrams (all architectures)
+│   ├── cloud-service-mapping.md   # AWS/GCP/Azure service mappings
+│   ├── component-details.md       # Deep technical documentation
+│   ├── deployment-patterns.md     # Cloud-specific deployment guides
+│   └── iac-reference.md           # Complete Terraform code (all clouds)
 │
 ├── terraform/                     # Infrastructure as Code
 │   ├── modules/                   # Reusable Terraform modules
@@ -146,6 +177,7 @@ chmod +x ../../../scripts/deployment/test-lambda.sh
 
 ## 📖 Documentation
 
+### Core Documentation
 - **[100-Step Instruction Manual](docs/manuals/100-STEP-INSTRUCTION-MANUAL.md)** - Complete guide from novice to expert
 - **[Architecture Documentation](docs/architecture/ARCHITECTURE.md)** - System design and components
 - **[Deployment Guide](docs/deployment/DEPLOYMENT.md)** - Detailed deployment instructions
@@ -172,6 +204,40 @@ This solution can be deployed on **AWS, GCP, or Azure**. The [`map-diagram-infra
 | Azure | ~$24.28 | ~$7.30/month | Microsoft ecosystem |
 
 See [map-diagram-infra.md](map-diagram-infra.md) for complete details.
+- **[Multi-Cloud Infrastructure Composer](map-diagram-infra/)** - Universal infrastructure diagrams for AWS, GCP, and Azure
+
+### 🌐 Universal Infrastructure Composer (Multi-Cloud Support)
+
+**📊 Complete infrastructure diagrams and deployment guides for AWS, GCP, and Azure**
+
+- **[Quick Reference](map-diagram-infra/QUICK-REFERENCE.md)** - Fast navigation and key information
+- **[Visual Index](map-diagram-infra/VISUAL-INDEX.md)** - Diagram gallery with use cases
+- **[Infrastructure Diagrams](map-diagram-infra/infrastructure-diagram.md)** - Complete Mermaid diagrams:
+  - High-level cloud-agnostic architecture
+  - Detailed component diagrams
+  - Network flow sequences
+  - Security architecture
+  - Cost optimization patterns
+  - Multi-region deployment
+- **[Cloud Service Mapping](map-diagram-infra/cloud-service-mapping.md)** - AWS ↔ GCP ↔ Azure equivalents:
+  - Complete service mapping table
+  - Pricing comparisons ($2.20-$3.46/month)
+  - Migration guides between clouds
+- **[Component Details](map-diagram-infra/component-details.md)** - Technical deep dive:
+  - Compute, Network, Storage layers
+  - Security, Monitoring, Automation
+  - Data flow and error handling
+- **[Deployment Patterns](map-diagram-infra/deployment-patterns.md)** - Step-by-step guides:
+  - AWS deployment (Lambda + VPC Gateway Endpoint)
+  - GCP deployment (Cloud Functions + Private Google Access)
+  - Azure deployment (Functions + Service Endpoints)
+- **[IaC Reference](map-diagram-infra/iac-reference.md)** - Production-ready Terraform:
+  - Complete AWS Terraform (8 files)
+  - Complete GCP Terraform (8 files)
+  - Complete Azure Terraform (7 files)
+
+**Why Universal?** Deploy the same secure file transfer architecture on any cloud provider with confidence. All three implementations feature FREE private connectivity, eliminating NAT Gateway costs.
+- **[Troubleshooting Guide](docs/troubleshooting/)** - Common issues and solutions
 
 ## 🏗️ Architecture
 
