@@ -7,6 +7,8 @@
 
 This repository demonstrates a secure and cost-effective solution for transferring files from a legacy SFTP system to Amazon S3 using AWS Lambda in a VPC. It resolves S3 timeout issues by configuring a VPC Gateway Endpoint for Amazon S3, eliminating the need for internet or NAT gateways, aligned with DEA-C01 (AWS Certified Data Engineer - Associate) best practices.
 
+**🌐 Multi-Cloud Ready**: See [`map-diagram-infra.md`](map-diagram-infra.md) for a universal infrastructure composition that maps all components to AWS, GCP, and Azure equivalents.
+
 ## 🎯 Overview
 
 This project provides a **production-ready**, **highly modular**, and **well-documented** infrastructure for secure file transfers. It includes:
@@ -15,6 +17,7 @@ This project provides a **production-ready**, **highly modular**, and **well-doc
 - ✅ **Modular Terraform infrastructure** (6 reusable modules)
 - ✅ **Reusable Python code** (organized into core, handlers, utils)
 - ✅ **Multi-environment support** (dev, staging, prod)
+- ✅ **Multi-cloud architecture map** (AWS, GCP, Azure equivalents)
 - ✅ **Comprehensive documentation** (architecture, deployment, troubleshooting)
 - ✅ **Utility scripts** (deployment, testing, monitoring)
 - ✅ **Security best practices** (encryption, least privilege, VPC isolation)
@@ -147,6 +150,28 @@ chmod +x ../../../scripts/deployment/test-lambda.sh
 - **[Architecture Documentation](docs/architecture/ARCHITECTURE.md)** - System design and components
 - **[Deployment Guide](docs/deployment/DEPLOYMENT.md)** - Detailed deployment instructions
 - **[Troubleshooting Guide](docs/troubleshooting/)** - Common issues and solutions
+- **[Multi-Cloud Infrastructure Map](map-diagram-infra.md)** - Universal architecture for AWS, GCP, and Azure
+
+## 🌐 Multi-Cloud Architecture
+
+This solution can be deployed on **AWS, GCP, or Azure**. The [`map-diagram-infra.md`](map-diagram-infra.md) document provides:
+
+- 📋 **Complete service mappings** across all three cloud providers
+- 🏗️ **Cloud-specific architecture diagrams** (AWS, GCP, Azure)
+- 💰 **Cost comparison** (GCP: ~$2.77/mo, AWS: ~$3.00/mo, Azure: ~$24.28/mo)
+- 🔄 **Migration strategies** for cross-cloud deployment
+- ⚙️ **Configuration examples** in Terraform for each cloud
+- 🔒 **Security mappings** for network, data, and identity
+- 📊 **Monitoring & logging** service equivalents
+
+**Quick Cloud Comparison**:
+| Cloud | Monthly Cost | Private Endpoint | Best For |
+|-------|-------------|------------------|----------|
+| AWS | ~$3.00 | FREE (Gateway Endpoint) | AWS-native workloads |
+| GCP | ~$2.77 | FREE (Private Google Access) | Cost optimization |
+| Azure | ~$24.28 | ~$7.30/month | Microsoft ecosystem |
+
+See [map-diagram-infra.md](map-diagram-infra.md) for complete details.
 
 ## 🏗️ Architecture
 
