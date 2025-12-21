@@ -1,0 +1,162 @@
+@startuml Universal-Cloud-Architecture-Secure-File-Transfer
+
+!define AWSPuml https://raw.githubusercontent.com/awslabs/aws-icons-for-plantuml/v14.0/dist
+!include AWSPuml/AWSCommon.puml
+!include AWSPuml/AWSSimplified.puml
+
+' Define colors for multi-cloud
+!define AWS_COLOR #FF9900
+!define GCP_COLOR #4285F4
+!define AZURE_COLOR #0078D4
+!define NEUTRAL_COLOR #232F3E
+
+skinparam rectangle {
+    BackgroundColor<<compute>> #FFE6CC
+    BorderColor<<compute>> #FF9900
+    BackgroundColor<<storage>> #CCE5FF
+    BorderColor<<storage>> #3B48CC
+    BackgroundColor<<network>> #E6F4EA
+    BorderColor<<network>> #7AA116
+    BackgroundColor<<security>> #FFCCCC
+    BorderColor<<security>> #DD344C
+    BackgroundColor<<observability>> #CCE5FF
+    BorderColor<<observability>> #146EB4
+}
+
+title Universal Multi-Cloud Architecture\nSecure File Transfer: SFTP to Object Storage\nAWS | GCP | Azure
+
+' External Systems
+package "External Systems" {
+    rectangle "Legacy SFTP Server\nPort 22 (SSH/SFTP)\nOn-Premise/Internet" as SFTP #CCCCCC
+    rectangle "Scheduler\nAWS: EventBridge\nGCP: Cloud Scheduler\nAzure: Logic Apps" as SCHEDULER #CCCCCC
+}
+
+' Cloud Platform
+package "Cloud Platform (AWS/GCP/Azure)" {
+    
+    ' Virtual Private Network
+    package "Virtual Private Network\nAWS: VPC | GCP: VPC | Azure: VNet\nCIDR: 10.0.0.0/16" {
+        
+        ' Private Subnet 1
+        package "Private Subnet - AZ1\n10.0.1.0/24" {
+            rectangle "Serverless Function (Instance 1)\n\nAWS: Lambda\nGCP: Cloud Functions (2nd gen)\nAzure: Azure Functions\n\nRuntime: Python 3.11\nMemory: 512 MB\nTimeout: 300s" as FUNC1 <<compute>>
+        }
+        
+        ' Private Subnet 2
+        package "Private Subnet - AZ2\n10.0.2.0/24" {
+            rectangle "Serverless Function (Instance 2)\n\nAWS: Lambda\nGCP: Cloud Functions (2nd gen)\nAzure: Azure Functions\n\nRuntime: Python 3.11\nMemory: 512 MB\nTimeout: 300s" as FUNC2 <<compute>>
+        }
+        
+        ' Network Components
+        rectangle "Network Security\n\nAWS: Security Group\nGCP: Firewall Rules\nAzure: NSG\n\nEgress Rules:\n• HTTPS (443)\n• SSH (22)" as SG <<network>>
+        
+        rectangle "Route Table\nManages traffic routing\nto endpoints" as RT <<network>>
+        
+        rectangle "Private Service Endpoint\n\nAWS: VPC Gateway Endpoint (FREE)\nGCP: Private Service Connect\nAzure: Private Endpoint ($7.20/mo)\n\nPurpose: Private connection\nto Object Storage" as ENDPOINT <<network>>
+    }
+    
+    ' Storage Layer
+    package "Storage Layer" {
+        rectangle "Object Storage\n\nAWS: S3\nGCP: Cloud Storage\nAzure: Blob Storage\n\nFeatures:\n• Versioning: Enabled\n• Encryption: AES-256\n• Public Access: Blocked" as STORAGE <<storage>>
+        
+        rectangle "Lifecycle Policies\n\nDay 0-30: Standard (Hot)\nDay 30-90: Infrequent Access (Cool)\nDay 90-180: Archive\nDay 180+: Deep Archive (Cold)" as LIFECYCLE <<storage>>
+    }
+    
+    ' Security & Identity
+    package "Security & Identity" {
+        rectangle "Identity & Access Management\n\nAWS: IAM Role + Policies\nGCP: Service Account + IAM\nAzure: Managed Identity + RBAC\n\nPrinciple: Least Privilege\n\nPermissions:\n• storage:PutObject\n• storage:ListBucket\n• secrets:GetSecret\n• logs:CreateLogStream" as IAM <<security>>
+        
+        rectangle "Secret Manager\n\nAWS: Secrets Manager ($0.40/secret)\nGCP: Secret Manager ($0.06/secret)\nAzure: Key Vault ($0.03/secret)\n\nStores:\n• SFTP Username\n• SFTP Password\n• SFTP Host\n• SFTP Port" as SECRETS <<security>>
+    }
+    
+    ' Observability
+    package "Observability & Monitoring" {
+        rectangle "Centralized Logging\n\nAWS: CloudWatch Logs\nGCP: Cloud Logging\nAzure: Application Insights\n\nRetention: 7 days\nFormat: JSON (structured)" as LOGS <<observability>>
+        
+        rectangle "Monitoring & Metrics\n\nAWS: CloudWatch Metrics\nGCP: Cloud Monitoring\nAzure: Azure Monitor\n\nTracks:\n• Invocations\n• Errors\n• Duration\n• Cost" as METRICS <<observability>>
+        
+        rectangle "Alerting\n\nAWS: CloudWatch Alarms\nGCP: Cloud Alerting\nAzure: Action Groups\n\nAlerts on:\n• Error rate > 5%\n• Duration > 4 min\n• Cost anomalies" as ALERTS <<observability>>
+    }
+}
+
+' Relationships and Data Flow
+SCHEDULER --> FUNC1 : Triggers\n(scheduled)
+SCHEDULER --> FUNC2 : Triggers\n(scheduled)
+
+FUNC1 --> SG : Uses
+FUNC2 --> SG : Uses
+
+SG --> SFTP : Port 22\n(SSH/SFTP)\nInternet
+SG --> ENDPOINT : Port 443\n(HTTPS)\nPrivate
+
+ENDPOINT --> STORAGE : Private\nConnection\n(No Internet)
+
+STORAGE --> LIFECYCLE : Applies
+
+FUNC1 --> IAM : Assumes\nRole/Identity
+FUNC2 --> IAM : Assumes\nRole/Identity
+
+FUNC1 --> SECRETS : Retrieves\nCredentials
+FUNC2 --> SECRETS : Retrieves\nCredentials
+
+IAM --> STORAGE : Grants\nAccess
+IAM --> SECRETS : Grants\nAccess
+IAM --> LOGS : Grants\nAccess
+
+FUNC1 --> LOGS : Writes\nLogs
+FUNC2 --> LOGS : Writes\nLogs
+
+FUNC1 --> METRICS : Sends\nMetrics
+FUNC2 --> METRICS : Sends\nMetrics
+
+METRICS --> ALERTS : Triggers\non threshold
+
+RT .> ENDPOINT : Routes\ntraffic
+
+' Legend
+legend right
+    |= Component |= AWS |= GCP |= Azure |= Cost/Month |
+    | Serverless Function | Lambda | Cloud Functions | Azure Functions | $0.20-$0.40 |
+    | Object Storage | S3 | Cloud Storage | Blob Storage | $2.00-$2.30 |
+    | Private Endpoint | Gateway Endpoint | Private Service | Private Endpoint | $0-$7.20 |
+    | Identity | IAM Role | Service Account | Managed Identity | $0 |
+    | Secrets | Secrets Manager | Secret Manager | Key Vault | $0.03-$0.40 |
+    | Logging | CloudWatch Logs | Cloud Logging | App Insights | $0-$2.30 |
+    | Monitoring | CloudWatch | Cloud Monitoring | Azure Monitor | $0 |
+    | Scheduler | EventBridge | Cloud Scheduler | Logic Apps | $0 |
+    
+    **Total Cost** (1K transfers/month):
+    • AWS: $3.45/month
+    • GCP: $2.46/month (Winner)
+    • Azure: $11.78/month
+end legend
+
+note right of ENDPOINT
+    **KEY COST SAVINGS**
+    
+    Private Endpoint vs NAT Gateway:
+    • AWS VPC Gateway Endpoint: FREE
+    • NAT Gateway: $32.40/month
+    • **Savings: 100%**
+    
+    Benefits:
+    ✓ No data transfer charges
+    ✓ Traffic stays in cloud network
+    ✓ Enhanced security
+    ✓ Lower latency
+end note
+
+note left of SFTP
+    **Data Flow**
+    
+    1. Scheduler triggers function
+    2. Function retrieves credentials
+    3. Connects to SFTP (port 22)
+    4. Downloads file(s)
+    5. Uploads to storage (port 443)
+    6. Logs success/failure
+    7. Sends metrics
+    8. Lifecycle manages storage
+end note
+
+@enduml
