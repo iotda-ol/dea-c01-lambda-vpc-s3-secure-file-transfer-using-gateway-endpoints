@@ -1,0 +1,320 @@
+# Universal Cloud Architecture
+# Secure File Transfer: SFTP to Cloud Object Storage
+
+## Cloud-Agnostic Architecture Diagram
+
+```
+┌────────────────────────────────────────────────────────────────────────────────┐
+│                         INTERNET / PUBLIC NETWORK                               │
+│                                                                                 │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │                    Legacy SFTP Server                                    │  │
+│  │                    (External System)                                     │  │
+│  │                                                                           │  │
+│  │  • Host: sftp.example.com                                               │  │
+│  │  • Port: 22 (SSH/SFTP)                                                  │  │
+│  │  • Authentication: Username/Password or SSH Key                          │  │
+│  └───────────────────────────┬─────────────────────────────────────────────┘  │
+│                              │                                                  │
+└──────────────────────────────┼──────────────────────────────────────────────────┘
+                               │
+                               │ SSH/SFTP (Port 22)
+                               │ Encrypted Connection
+                               │
+┌──────────────────────────────▼──────────────────────────────────────────────────┐
+│                        CLOUD PROVIDER ENVIRONMENT                                │
+│                        (AWS / GCP / Azure)                                       │
+│                                                                                  │
+│  ┌────────────────────────────────────────────────────────────────────────┐    │
+│  │                    VIRTUAL PRIVATE NETWORK                              │    │
+│  │            (VPC / VPC / Virtual Network)                                │    │
+│  │            CIDR: 10.0.0.0/16                                            │    │
+│  │                                                                          │    │
+│  │  ┌────────────────────────────────────────────────────────────────┐    │    │
+│  │  │              PRIVATE SUBNET 1                                  │    │    │
+│  │  │              (10.0.1.0/24)                                     │    │    │
+│  │  │              Availability Zone A                               │    │    │
+│  │  │                                                                │    │    │
+│  │  │  ┌──────────────────────────────────────────────────────┐    │    │    │
+│  │  │  │      SERVERLESS COMPUTE FUNCTION                     │    │    │    │
+│  │  │  │                                                       │    │    │    │
+│  │  │  │  AWS:   Lambda Function                              │    │    │    │
+│  │  │  │  GCP:   Cloud Functions (2nd gen)                    │    │    │    │
+│  │  │  │  Azure: Azure Functions                              │    │    │    │
+│  │  │  │                                                       │    │    │    │
+│  │  │  │  Runtime:     Python 3.11                            │    │    │    │
+│  │  │  │  Memory:      512 MB                                 │    │    │    │
+│  │  │  │  Timeout:     300 seconds                            │    │    │    │
+│  │  │  │  Trigger:     Scheduled (EventBridge/Scheduler)      │    │    │    │
+│  │  │  │                                                       │    │    │    │
+│  │  │  │  Responsibilities:                                   │    │    │    │
+│  │  │  │  1. Retrieve SFTP credentials from Secrets Vault    │    │    │    │
+│  │  │  │  2. Connect to SFTP server                          │    │    │    │
+│  │  │  │  3. Download files from SFTP                        │    │    │    │
+│  │  │  │  4. Upload files to Object Storage                  │    │    │    │
+│  │  │  │  5. Log activities                                  │    │    │    │
+│  │  │  │                                                       │    │    │    │
+│  │  │  └───────────┬──────────────────┬───────────────────┘    │    │    │
+│  │  │              │                  │                         │    │    │
+│  │  │              │                  │                         │    │    │
+│  │  └──────────────┼──────────────────┼─────────────────────────┘    │    │
+│  │                 │                  │                              │    │
+│  │  ┌──────────────▼──────────────────▼────────────────────────┐    │    │
+│  │  │              PRIVATE SUBNET 2                            │    │    │
+│  │  │              (10.0.2.0/24)                               │    │    │
+│  │  │              Availability Zone B                         │    │    │
+│  │  │              (High Availability / Redundancy)            │    │    │
+│  │  └──────────────────────────────────────────────────────────┘    │    │
+│  │                 │                  │                              │    │
+│  │                 │                  │                              │    │
+│  │  ┌──────────────▼──────────────────▼────────────────────────┐    │    │
+│  │  │                 ROUTE TABLE                               │    │    │
+│  │  │                                                            │    │    │
+│  │  │  Routes:                                                  │    │    │
+│  │  │  • 10.0.0.0/16  →  Local                                │    │    │
+│  │  │  • Storage Prefix → Private Endpoint                     │    │    │
+│  │  └──────────────────────────┬────────────────────────────────┘    │    │
+│  │                             │                                     │    │
+│  │                             │                                     │    │
+│  │  ┌──────────────────────────▼────────────────────────────────┐   │    │
+│  │  │           PRIVATE SERVICE ENDPOINT                        │   │    │
+│  │  │                                                            │   │    │
+│  │  │  AWS:   VPC Gateway Endpoint (FREE for S3)              │   │    │
+│  │  │  GCP:   Private Service Connect                          │   │    │
+│  │  │  Azure: Private Link / Private Endpoint                  │   │    │
+│  │  │                                                            │   │    │
+│  │  │  Purpose: Private connectivity to Object Storage         │   │    │
+│  │  │  • No internet gateway required                          │   │    │
+│  │  │  • No NAT gateway required (cost savings!)               │   │    │
+│  │  │  • Traffic stays within cloud provider network           │   │    │
+│  │  │  • Lower latency, higher security                        │   │    │
+│  │  └──────────────────────────┬────────────────────────────────┘   │    │
+│  └─────────────────────────────┼────────────────────────────────────┘    │
+│                                │                                         │
+│                                │ HTTPS (Port 443)                        │
+│                                │ Encrypted in Transit                    │
+│                                │                                         │
+│  ┌─────────────────────────────▼────────────────────────────────────┐   │
+│  │                    OBJECT STORAGE SERVICE                         │   │
+│  │                                                                    │   │
+│  │  AWS:   Amazon S3 Bucket                                         │   │
+│  │  GCP:   Cloud Storage Bucket                                     │   │
+│  │  Azure: Blob Storage Container                                   │   │
+│  │                                                                    │   │
+│  │  Configuration:                                                   │   │
+│  │  • Encryption at Rest: Enabled (AES-256)                         │   │
+│  │  • Versioning: Enabled                                           │   │
+│  │  • Public Access: Blocked                                        │   │
+│  │  • Lifecycle Policies:                                           │   │
+│  │    - Day 30:  Move to Infrequent Access                         │   │
+│  │    - Day 90:  Move to Archive                                    │   │
+│  │    - Day 180: Move to Deep Archive                              │   │
+│  │                                                                    │   │
+│  │  Stored Files:                                                    │   │
+│  │  • /uploads/2024-01-01/file1.txt                                │   │
+│  │  • /uploads/2024-01-01/file2.csv                                │   │
+│  │  • /processed/archive/...                                        │   │
+│  └────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────┐   │
+│  │                    SECRETS VAULT SERVICE                        │   │
+│  │                                                                  │   │
+│  │  AWS:   AWS Secrets Manager                                    │   │
+│  │  GCP:   Google Secret Manager                                  │   │
+│  │  Azure: Azure Key Vault                                        │   │
+│  │                                                                  │   │
+│  │  Stored Secrets:                                               │   │
+│  │  {                                                              │   │
+│  │    "sftp_host": "sftp.example.com",                           │   │
+│  │    "sftp_port": 22,                                            │   │
+│  │    "sftp_username": "transfer_user",                           │   │
+│  │    "sftp_password": "encrypted_password",                      │   │
+│  │    "sftp_private_key": "-----BEGIN RSA PRIVATE KEY-----..."   │   │
+│  │  }                                                              │   │
+│  │                                                                  │   │
+│  │  Features:                                                      │   │
+│  │  • Automatic encryption                                        │   │
+│  │  • Version history                                             │   │
+│  │  • Access logging                                              │   │
+│  │  • Rotation support                                            │   │
+│  └────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────┐   │
+│  │                 IDENTITY & ACCESS MANAGEMENT                    │   │
+│  │                                                                  │   │
+│  │  AWS:   IAM Role + Policies                                    │   │
+│  │  GCP:   Service Account + IAM Bindings                         │   │
+│  │  Azure: Managed Identity + RBAC                                │   │
+│  │                                                                  │   │
+│  │  Function Permissions (Least Privilege):                       │   │
+│  │  • Read secrets from Secrets Vault                             │   │
+│  │  • Write objects to Storage                                    │   │
+│  │  • List objects in Storage                                     │   │
+│  │  • Write logs to Logging Service                               │   │
+│  │  • Create network interfaces (for VPC functions)               │   │
+│  └────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────┐   │
+│  │                    LOGGING & MONITORING                         │   │
+│  │                                                                  │   │
+│  │  AWS:   CloudWatch Logs + CloudWatch Metrics                   │   │
+│  │  GCP:   Cloud Logging + Cloud Monitoring                       │   │
+│  │  Azure: Azure Monitor Logs + Metrics                           │   │
+│  │                                                                  │   │
+│  │  Collected Data:                                               │   │
+│  │  • Function execution logs                                     │   │
+│  │  • Error traces and stack traces                               │   │
+│  │  • Performance metrics (duration, memory)                      │   │
+│  │  • Custom application logs                                     │   │
+│  │  • Network flow logs                                           │   │
+│  │                                                                  │   │
+│  │  Retention: 7-30 days (configurable)                           │   │
+│  └────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────┐   │
+│  │                    SCHEDULER / ORCHESTRATION                    │   │
+│  │                                                                  │   │
+│  │  AWS:   Amazon EventBridge                                     │   │
+│  │  GCP:   Cloud Scheduler                                        │   │
+│  │  Azure: Logic Apps / Azure Scheduler                           │   │
+│  │                                                                  │   │
+│  │  Schedule: cron(0 2 * * ? *)                                   │   │
+│  │  Frequency: Daily at 2:00 AM UTC                               │   │
+│  │                                                                  │   │
+│  │  Triggers the serverless function to:                          │   │
+│  │  1. Connect to SFTP server                                     │   │
+│  │  2. Transfer files to Object Storage                           │   │
+│  │  3. Log results                                                 │   │
+│  └────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────┐   │
+│  │                    NETWORK SECURITY                             │   │
+│  │                                                                  │   │
+│  │  AWS:   Security Groups                                        │   │
+│  │  GCP:   VPC Firewall Rules                                     │   │
+│  │  Azure: Network Security Groups (NSG)                          │   │
+│  │                                                                  │   │
+│  │  Ingress Rules:                                                │   │
+│  │  • NONE (functions run in private network)                     │   │
+│  │                                                                  │   │
+│  │  Egress Rules:                                                 │   │
+│  │  • TCP/443 → 0.0.0.0/0 (HTTPS to Storage via Private Endpoint)│   │
+│  │  • TCP/22  → SFTP Server IP (SSH/SFTP to legacy system)       │   │
+│  └────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+
+═════════════════════════════════════════════════════════════════════════════
+                              DATA FLOW DIAGRAM
+═════════════════════════════════════════════════════════════════════════════
+
+┌─────────┐
+│ Step 1  │  Scheduler triggers Serverless Function
+└────┬────┘
+     │
+     ▼
+┌─────────┐
+│ Step 2  │  Function retrieves SFTP credentials from Secrets Vault
+└────┬────┘
+     │
+     ▼
+┌─────────┐
+│ Step 3  │  Function establishes SSH/SFTP connection to legacy server
+└────┬────┘
+     │
+     ▼
+┌─────────┐
+│ Step 4  │  Function downloads files from SFTP server
+└────┬────┘
+     │
+     ▼
+┌─────────┐
+│ Step 5  │  Function uploads files to Object Storage via Private Endpoint
+└────┬────┘
+     │
+     ▼
+┌─────────┐
+│ Step 6  │  Function logs activity to Logging Service
+└────┬────┘
+     │
+     ▼
+┌─────────┐
+│ Step 7  │  Lifecycle policies automatically tier storage (30/90/180 days)
+└─────────┘
+
+
+═════════════════════════════════════════════════════════════════════════════
+                           SECURITY ARCHITECTURE
+═════════════════════════════════════════════════════════════════════════════
+
+┌────────────────────────────────────────────────────────────────┐
+│                      DEFENSE IN DEPTH                           │
+├────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Layer 1: NETWORK ISOLATION                                    │
+│  • Private subnets (no public IPs)                             │
+│  • No internet gateway for storage traffic                     │
+│  • Private endpoints for cloud services                        │
+│                                                                 │
+│  Layer 2: FIREWALL CONTROLS                                    │
+│  • Security groups / NSGs                                      │
+│  • Deny all ingress by default                                │
+│  • Minimal egress (HTTPS + SFTP only)                         │
+│                                                                 │
+│  Layer 3: IDENTITY & ACCESS                                    │
+│  • Least privilege IAM policies                               │
+│  • No long-term credentials                                   │
+│  • Service accounts / managed identities                      │
+│                                                                 │
+│  Layer 4: ENCRYPTION                                           │
+│  • TLS/HTTPS in transit                                       │
+│  • SSH/SFTP encryption                                        │
+│  • AES-256 encryption at rest                                │
+│                                                                 │
+│  Layer 5: SECRETS MANAGEMENT                                   │
+│  • No hardcoded credentials                                   │
+│  • Encrypted secrets vault                                    │
+│  • Automatic key rotation                                     │
+│                                                                 │
+│  Layer 6: MONITORING & AUDIT                                   │
+│  • Comprehensive logging                                      │
+│  • Access audit trails                                        │
+│  • Alerting on anomalies                                      │
+│                                                                 │
+└────────────────────────────────────────────────────────────────┘
+
+
+═════════════════════════════════════════════════════════════════════════════
+                         COST OPTIMIZATION STRATEGY
+═════════════════════════════════════════════════════════════════════════════
+
+┌────────────────────────────────────────────────────────────────┐
+│                    MONTHLY COST BREAKDOWN                       │
+│               (1,000 executions, 100GB storage)                 │
+├────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Component                           AWS      GCP      Azure   │
+│  ────────────────────────────────────────────────────────────  │
+│  Serverless Compute (1K invocations) $0.25   $0.24    $0.20   │
+│  Object Storage (100GB)              $2.30   $2.00    $1.80   │
+│  Private Endpoint                    $0.00*  $0.00*   $7.20   │
+│  Secrets Vault                       $0.40   $0.06    $0.03   │
+│  Logging (1GB)                       $0.50   $0.50    $0.50   │
+│  ────────────────────────────────────────────────────────────  │
+│  TOTAL PER MONTH                     ~$3.45  ~$2.80   ~$9.73  │
+│                                                                 │
+│  * FREE for AWS S3 Gateway Endpoint                            │
+│  * GCP costs vary by configuration                             │
+│                                                                 │
+│  COST SAVINGS vs NAT Gateway: $32-45/month per AZ              │
+│  COST SAVINGS vs EC2 instance: $60-100/month                   │
+│                                                                 │
+└────────────────────────────────────────────────────────────────┘
+
+Key Cost Optimization Strategies:
+1. Use Private Endpoints (no NAT gateway)
+2. Serverless compute (pay-per-use, no idle costs)
+3. Storage lifecycle policies (automatic tiering)
+4. Log retention policies (7-30 days)
+5. Right-sized function memory (512MB)
