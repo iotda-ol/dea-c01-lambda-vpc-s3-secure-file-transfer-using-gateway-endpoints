@@ -1,0 +1,505 @@
+# GCP-Specific Resource Mapping
+# Detailed GCP implementation of the universal infrastructure composer
+
+cloud_provider: gcp
+provider_full_name: "Google Cloud Platform"
+region: "us-central1"
+project_id: "<GCP_PROJECT_ID>"
+
+# GCP Service Mapping
+gcp_services:
+  
+  # 1. Networking (Google Cloud VPC)
+  networking:
+    vpc_network:
+      service: "Google Cloud VPC"
+      resource_type: "google_compute_network"
+      properties:
+        name: "secure-file-transfer-vpc"
+        auto_create_subnetworks: false
+        routing_mode: "REGIONAL"
+      terraform_resource: "google_compute_network.main"
+      console_url: "https://console.cloud.google.com/networking/networks"
+      pricing: "FREE (no charge for VPC network)"
+    
+    private_subnets:
+      service: "Google Cloud VPC"
+      resource_type: "google_compute_subnetwork"
+      count: 2
+      properties:
+        name: "private-subnet"
+        ip_cidr_range: "10.0.1.0/24"
+        region: "us-central1"
+        network: "reference:vpc_network"
+        private_ip_google_access: true  # KEY: Enables Private Google Access for Cloud Storage
+      terraform_resource: "google_compute_subnetwork.private[*]"
+      pricing: "FREE (included with VPC)"
+      documentation: "https://cloud.google.com/vpc/docs/private-google-access"
+    
+    firewall_rules:
+      service: "Google Cloud VPC"
+      resource_type: "google_compute_firewall"
+      rules:
+        allow_https:
+          name: "allow-https-to-storage"
+          network: "reference:vpc_network"
+          direction: "EGRESS"
+          priority: 1000
+          destination_ranges: ["199.36.153.8/30"]  # Private Google Access IP range
+          allow:
+            protocol: "tcp"
+            ports: ["443"]
+          description: "HTTPS to Cloud Storage via Private Google Access"
+        
+        allow_sftp:
+          name: "allow-sftp-outbound"
+          network: "reference:vpc_network"
+          direction: "EGRESS"
+          priority: 1000
+          destination_ranges: ["0.0.0.0/0"]
+          allow:
+            protocol: "tcp"
+            ports: ["22"]
+          description: "SSH/SFTP to legacy server"
+      terraform_resource: "google_compute_firewall.egress_rules[*]"
+      pricing: "FREE (included with VPC)"
+    
+    private_google_access:
+      service: "Google Cloud VPC"
+      concept: "Private Google Access"
+      description: |
+        Enables VM instances and Cloud Functions in private subnets to reach 
+        Google Cloud services (including Cloud Storage) using internal IP addresses.
+        This is the GCP equivalent of AWS S3 Gateway Endpoint.
+      configuration:
+        subnet_property: "private_ip_google_access = true"
+        dns_resolution: "Automatic (uses 199.36.153.8/30 for storage.googleapis.com)"
+      pricing: "FREE (no additional cost)"
+      documentation: "https://cloud.google.com/vpc/docs/configure-private-google-access"
+
+  # 2. Compute (Google Cloud Functions / Cloud Run)
+  compute:
+    cloud_function:
+      service: "Google Cloud Functions (2nd gen)"
+      resource_type: "google_cloudfunctions2_function"
+      properties:
+        name: "secure-file-transfer-function"
+        runtime: "python311"
+        entry_point: "file_transfer_handler"
+        memory: "512Mi"
+        timeout: "300s"
+        vpc_connector: "reference:vpc_connector"
+        environment_variables:
+          STORAGE_BUCKET: "reference:storage_bucket"
+          SECRET_NAME: "reference:secret_manager_secret"
+          REMOTE_PATH: "/sftp/files"
+          LOG_LEVEL: "INFO"
+      terraform_resource: "google_cloudfunctions2_function.file_transfer"
+      pricing:
+        invocations: "$0.40 per 1M invocations"
+        compute_time: "$0.0000025 per GB-second"
+        estimated_monthly: "$0.25 for 1000 executions"
+      documentation: "https://cloud.google.com/functions/pricing"
+      notes: |
+        Cloud Functions 2nd gen is recommended as it's built on Cloud Run and 
+        has better VPC support. Alternative: use Cloud Run directly for more control.
+    
+    vpc_connector:
+      service: "Serverless VPC Access"
+      resource_type: "google_vpc_access_connector"
+      properties:
+        name: "vpc-connector"
+        region: "us-central1"
+        network: "reference:vpc_network"
+        ip_cidr_range: "10.8.0.0/28"  # Dedicated /28 subnet for connector
+        min_instances: 2
+        max_instances: 3
+      terraform_resource: "google_vpc_access_connector.connector"
+      pricing: "$0.063 per vCPU hour + $0.009 per GB memory hour"
+      estimated_cost: "$9.45/month (for 2 min instances)"
+      documentation: "https://cloud.google.com/vpc/docs/configure-serverless-vpc-access"
+    
+    alternative_cloud_run:
+      service: "Google Cloud Run"
+      resource_type: "google_cloud_run_service"
+      properties:
+        name: "secure-file-transfer-service"
+        location: "us-central1"
+        template:
+          spec:
+            containers:
+              - image: "gcr.io/project-id/file-transfer:latest"
+                resources:
+                  limits:
+                    memory: "512Mi"
+                    cpu: "1000m"
+            container_concurrency: 1
+            timeout_seconds: 300
+        annotations:
+          vpc_connector: "reference:vpc_connector"
+      terraform_resource: "google_cloud_run_service.file_transfer"
+      pricing:
+        requests: "$0.40 per 1M requests"
+        cpu_time: "$0.00002400 per vCPU-second"
+        memory_time: "$0.00000250 per GB-second"
+      notes: "Cloud Run offers more control and can be more cost-effective for longer-running tasks"
+
+  # 3. Storage (Google Cloud Storage)
+  storage:
+    storage_bucket:
+      service: "Google Cloud Storage"
+      resource_type: "google_storage_bucket"
+      properties:
+        name: "secure-file-transfer-bucket"
+        location: "US"  # Multi-region for high availability
+        storage_class: "STANDARD"
+        versioning:
+          enabled: true
+        encryption:
+          default_kms_key_name: null  # Uses Google-managed keys
+        public_access_prevention: "enforced"
+        uniform_bucket_level_access: true
+      terraform_resource: "google_storage_bucket.file_transfer"
+      pricing:
+        standard: "$0.020 per GB/month"
+        nearline: "$0.010 per GB/month (min 30 days)"
+        coldline: "$0.004 per GB/month (min 90 days)"
+        archive: "$0.0012 per GB/month (min 365 days)"
+      documentation: "https://cloud.google.com/storage/pricing"
+    
+    bucket_iam:
+      service: "Google Cloud Storage IAM"
+      resource_type: "google_storage_bucket_iam_binding"
+      properties:
+        bucket: "reference:storage_bucket"
+        role: "roles/storage.objectAdmin"
+        members:
+          - "serviceAccount:reference:service_account.email"
+      terraform_resource: "google_storage_bucket_iam_binding.function_access"
+      pricing: "FREE"
+    
+    lifecycle_policy:
+      service: "Google Cloud Storage"
+      resource_type: "google_storage_bucket"
+      properties:
+        lifecycle_rule:
+          - action:
+              type: "SetStorageClass"
+              storage_class: "NEARLINE"
+            condition:
+              age: 30
+          - action:
+              type: "SetStorageClass"
+              storage_class: "COLDLINE"
+            condition:
+              age: 90
+          - action:
+              type: "SetStorageClass"
+              storage_class: "ARCHIVE"
+            condition:
+              age: 180
+          - action:
+              type: "Delete"
+            condition:
+              num_newer_versions: 3
+      terraform_resource: "google_storage_bucket.file_transfer.lifecycle_rule"
+      pricing: "FREE (lifecycle rules), pay for storage in each class"
+
+  # 4. IAM (Identity and Access Management)
+  iam:
+    service_account:
+      service: "Google Cloud IAM"
+      resource_type: "google_service_account"
+      properties:
+        account_id: "file-transfer-sa"
+        display_name: "File Transfer Service Account"
+        description: "Service account for Cloud Functions file transfer"
+      terraform_resource: "google_service_account.function_sa"
+      pricing: "FREE"
+    
+    storage_role_binding:
+      service: "Google Cloud IAM"
+      resource_type: "google_project_iam_member"
+      properties:
+        project: "reference:project_id"
+        role: "roles/storage.objectAdmin"
+        member: "serviceAccount:reference:service_account.email"
+      terraform_resource: "google_project_iam_member.storage_admin"
+      pricing: "FREE"
+    
+    logging_role_binding:
+      service: "Google Cloud IAM"
+      resource_type: "google_project_iam_member"
+      properties:
+        project: "reference:project_id"
+        role: "roles/logging.logWriter"
+        member: "serviceAccount:reference:service_account.email"
+      terraform_resource: "google_project_iam_member.log_writer"
+      pricing: "FREE"
+    
+    secret_accessor_role:
+      service: "Google Cloud IAM"
+      resource_type: "google_secret_manager_secret_iam_member"
+      properties:
+        secret_id: "reference:secret_manager_secret"
+        role: "roles/secretmanager.secretAccessor"
+        member: "serviceAccount:reference:service_account.email"
+      terraform_resource: "google_secret_manager_secret_iam_member.function_access"
+      pricing: "FREE"
+
+  # 5. Secrets Management
+  secrets:
+    secret_manager_secret:
+      service: "Google Secret Manager"
+      resource_type: "google_secret_manager_secret"
+      properties:
+        secret_id: "sftp-credentials"
+        replication:
+          automatic: true
+      terraform_resource: "google_secret_manager_secret.sftp_credentials"
+      pricing:
+        active_secret_versions: "$0.06 per secret per month"
+        access_operations: "$0.03 per 10,000 operations"
+      estimated_cost: "$0.06/month"
+      documentation: "https://cloud.google.com/secret-manager/pricing"
+    
+    secret_version:
+      service: "Google Secret Manager"
+      resource_type: "google_secret_manager_secret_version"
+      properties:
+        secret: "reference:secret_manager_secret"
+        secret_data:
+          username: "sftp_user"
+          password: "encrypted_password"
+          host: "sftp.example.com"
+          port: "22"
+      terraform_resource: "google_secret_manager_secret_version.sftp_credentials_v1"
+      pricing: "Included in secret cost"
+
+  # 6. Monitoring and Logging
+  monitoring:
+    cloud_logging:
+      service: "Google Cloud Logging"
+      automatic: true
+      description: "Cloud Functions automatically send logs to Cloud Logging"
+      log_name: "projects/PROJECT_ID/logs/cloudfunctions.googleapis.com%2Fcloud-functions"
+      pricing:
+        first_50gb: "FREE per month"
+        additional: "$0.50 per GB/month"
+        retention_default: "30 days"
+      estimated_cost: "$0.00 - $0.50/month"
+      documentation: "https://cloud.google.com/logging/pricing"
+    
+    log_sink:
+      service: "Google Cloud Logging"
+      resource_type: "google_logging_project_sink"
+      properties:
+        name: "function-logs-sink"
+        destination: "storage.googleapis.com/reference:storage_bucket/logs"
+        filter: 'resource.type="cloud_function" AND resource.labels.function_name="secure-file-transfer-function"'
+      terraform_resource: "google_logging_project_sink.function_logs"
+      pricing: "Routing charges: $0.50 per GB"
+      optional: true
+    
+    cloud_monitoring:
+      service: "Google Cloud Monitoring"
+      automatic: true
+      metrics:
+        - "execution_count"
+        - "execution_times"
+        - "user_memory_bytes"
+        - "instance_count"
+      pricing:
+        first_150mb: "FREE per month (metrics)"
+        additional: "$0.2580 per MB/month"
+      documentation: "https://cloud.google.com/monitoring/pricing"
+    
+    alert_policy:
+      service: "Google Cloud Monitoring"
+      resource_type: "google_monitoring_alert_policy"
+      properties:
+        display_name: "Cloud Function Error Rate"
+        conditions:
+          - display_name: "Error rate threshold"
+            condition_threshold:
+              filter: 'resource.type="cloud_function" AND metric.type="cloudfunctions.googleapis.com/function/execution_count"'
+              comparison: "COMPARISON_GT"
+              threshold_value: 5
+              duration: "300s"
+      terraform_resource: "google_monitoring_alert_policy.function_errors"
+      pricing: "FREE (included in Cloud Monitoring)"
+
+  # 7. Automation
+  automation:
+    cloud_scheduler:
+      service: "Google Cloud Scheduler"
+      resource_type: "google_cloud_scheduler_job"
+      properties:
+        name: "file-transfer-schedule"
+        description: "Trigger file transfer function daily"
+        schedule: "0 2 * * *"  # Daily at 2 AM
+        time_zone: "UTC"
+        http_target:
+          uri: "reference:cloud_function.uri"
+          http_method: "POST"
+          oidc_token:
+            service_account_email: "reference:service_account.email"
+      terraform_resource: "google_cloud_scheduler_job.file_transfer"
+      pricing:
+        free_tier: "3 jobs per month"
+        additional: "$0.10 per job per month"
+      estimated_cost: "$0.00 (within free tier)"
+      documentation: "https://cloud.google.com/scheduler/pricing"
+
+# Total GCP Infrastructure Cost Estimate
+cost_estimate:
+  monthly:
+    cloud_function_compute: "$0.25"
+    vpc_connector: "$9.45"  # Serverless VPC Access connector (2 min instances)
+    storage_100gb: "$2.00"
+    storage_requests: "$0.01"
+    secret_manager: "$0.06"
+    cloud_logging: "$0.05"
+    cloud_scheduler: "$0.00"  # Free tier
+    total: "$11.82/month"
+  
+  annual:
+    estimated: "$141.84/year"
+  
+  cost_optimization_notes:
+    - "VPC Connector is the most expensive component (~80% of cost)"
+    - "Consider Cloud Run with direct VPC access for better cost control"
+    - "Use Cloud Functions with Pub/Sub instead of VPC Connector if possible"
+    - "Private Google Access is FREE (no NAT Gateway needed)"
+  
+  alternative_architecture:
+    description: "Use Cloud Run with direct VPC access (no VPC Connector)"
+    monthly_cost: "$2.37/month"
+    savings: "80% cost reduction ($9.45/month saved)"
+
+# GCP-Specific Best Practices
+best_practices:
+  - "Enable Private Google Access on subnets for free Cloud Storage access"
+  - "Use Cloud Functions 2nd gen (based on Cloud Run) for better VPC support"
+  - "Consider Cloud Run for longer-running tasks to avoid VPC Connector costs"
+  - "Enable uniform bucket-level access for simplified IAM"
+  - "Use lifecycle policies to transition data to cheaper storage classes"
+  - "Set up Cloud Logging exports to Cloud Storage for long-term retention"
+  - "Use service accounts with least privilege permissions"
+  - "Enable VPC Flow Logs for security monitoring (optional)"
+  - "Use Organization Policies for governance"
+  - "Tag all resources for cost allocation"
+
+# Deployment Commands
+deployment:
+  terraform:
+    init: "terraform init"
+    plan: "terraform plan -out=tfplan"
+    apply: "terraform apply tfplan"
+    destroy: "terraform destroy"
+  
+  gcloud_cli:
+    set_project: "gcloud config set project PROJECT_ID"
+    enable_apis: |
+      gcloud services enable cloudfunctions.googleapis.com \
+        cloudscheduler.googleapis.com \
+        secretmanager.googleapis.com \
+        vpcaccess.googleapis.com \
+        compute.googleapis.com \
+        storage.googleapis.com
+    
+    deploy_function: |
+      gcloud functions deploy secure-file-transfer-function \
+        --gen2 \
+        --runtime=python311 \
+        --region=us-central1 \
+        --source=./lambda \
+        --entry-point=file_transfer_handler \
+        --vpc-connector=vpc-connector \
+        --service-account=file-transfer-sa@PROJECT_ID.iam.gserviceaccount.com \
+        --set-env-vars=STORAGE_BUCKET=bucket-name,SECRET_NAME=sftp-credentials
+    
+    invoke_function: |
+      gcloud functions call secure-file-transfer-function \
+        --region=us-central1 \
+        --gen2
+    
+    view_logs: |
+      gcloud functions logs read secure-file-transfer-function \
+        --region=us-central1 \
+        --gen2 \
+        --limit=50
+
+# Monitoring and Observability
+monitoring_queries:
+  cloud_logging:
+    error_analysis: |
+      resource.type="cloud_function"
+      resource.labels.function_name="secure-file-transfer-function"
+      severity>=ERROR
+    
+    performance_stats: |
+      resource.type="cloud_function"
+      resource.labels.function_name="secure-file-transfer-function"
+      jsonPayload.execution_time_ms>1000
+    
+    success_rate: |
+      resource.type="cloud_function"
+      resource.labels.function_name="secure-file-transfer-function"
+      jsonPayload.status="success"
+
+# Security Checklist
+security:
+  network:
+    - "✓ Cloud Function connected to VPC via VPC Connector"
+    - "✓ Private Google Access enabled on subnets"
+    - "✓ Firewall rules allow only required outbound traffic"
+    - "✓ No external IP addresses assigned to compute resources"
+  
+  data:
+    - "✓ Cloud Storage bucket encryption enabled (Google-managed keys)"
+    - "✓ Bucket versioning enabled"
+    - "✓ Public access prevention enforced"
+    - "✓ TLS/HTTPS for all data in transit"
+    - "✓ Uniform bucket-level access enabled"
+  
+  identity:
+    - "✓ Service account with least privilege permissions"
+    - "✓ No service account keys (using workload identity)"
+    - "✓ Secrets stored in Secret Manager"
+    - "✓ IAM bindings follow principle of least privilege"
+  
+  monitoring:
+    - "✓ Cloud Logging enabled for Cloud Functions"
+    - "✓ Cloud Monitoring alerts for error detection"
+    - "✓ VPC Flow Logs (optional) for network monitoring"
+    - "✓ Cloud Audit Logs for compliance"
+
+# Migration from AWS
+migration_from_aws:
+  networking:
+    aws_vpc: "→ GCP VPC Network"
+    aws_private_subnet: "→ GCP Subnet with private_ip_google_access=true"
+    aws_security_group: "→ GCP Firewall Rules"
+    aws_s3_gateway_endpoint: "→ Private Google Access (FREE)"
+  
+  compute:
+    aws_lambda: "→ Cloud Functions 2nd gen OR Cloud Run"
+    lambda_vpc_config: "→ VPC Connector OR Cloud Run VPC direct connection"
+  
+  storage:
+    aws_s3: "→ Cloud Storage"
+    s3_lifecycle: "→ Cloud Storage lifecycle policies"
+    s3_versioning: "→ Cloud Storage versioning"
+  
+  iam:
+    iam_role: "→ Service Account"
+    iam_policy: "→ IAM Bindings"
+  
+  secrets:
+    aws_secrets_manager: "→ Secret Manager"
+  
+  monitoring:
+    cloudwatch_logs: "→ Cloud Logging"
+    cloudwatch_metrics: "→ Cloud Monitoring"
+    eventbridge: "→ Cloud Scheduler + Pub/Sub"
